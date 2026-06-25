@@ -1,0 +1,27 @@
+minio:
+  url: http://localhost:9000
+  access-key: admin
+  secret-key: admin123
+  bucket: products
+spring:
+  application:
+    name: phsardigital
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 200MB
+  datasource:
+    username: ${USERNAME}
+    driver-class-name: org.postgresql.Driver
+    password: ${PASSWORD}
+    url: ${URL}
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:8080/realms/istad
+server:
+  port: 8090
