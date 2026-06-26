@@ -33,7 +33,7 @@ public class CategoryServiceImpl implements CategoryService{
     }
 
     @Override
-    public CategoryResponse createCategory(CategoryRequest categoryRequest) {
+    public CategoryResponse create(CategoryRequest categoryRequest) {
         if (categoryRepository.existsByName((categoryRequest.name()))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Category with this name already exists.");
         }
@@ -105,7 +105,7 @@ public class CategoryServiceImpl implements CategoryService{
     }
 
     @Override
-    public void softDeleteCategory(String slug) {
+    public void softDelete(String slug) {
         Category category = categoryRepository.findBySlug(slug).orElseThrow(()->
                 new ResponseStatusException(HttpStatus.NOT_FOUND,"Category not found with this slug"));
         category.setIsDeleted(true);

@@ -19,36 +19,36 @@ import java.util.UUID;
 public class CategoryController {
     private final CategoryService categoryService;
     @GetMapping
-    public Page<CategoryResponse> allCategories(@RequestParam(required = false,defaultValue ="0") int pageNumber,
+    public Page<CategoryResponse> findAll(@RequestParam(required = false,defaultValue ="0") int pageNumber,
                                                 @RequestParam(required = false,defaultValue ="25") int pageSize){
         return categoryService.findAll(pageNumber,pageSize);
     }
     @GetMapping("/{uuid}/children")
-    public List<CategoryResponse> getCategoryChildren(@PathVariable UUID uuid){
+    public List<CategoryResponse> getChildren(@PathVariable UUID uuid){
         return categoryService.findChildByUuid(uuid);
     }
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public CategoryResponse addCategory(@Valid @RequestBody CategoryRequest categoryRequest){
-        return categoryService.createCategory(categoryRequest);
+    public CategoryResponse create(@Valid @RequestBody CategoryRequest categoryRequest){
+        return categoryService.create(categoryRequest);
     }
     @GetMapping("/slug/{slug}")
-    public CategoryResponse categoryBySlug(@PathVariable String slug){
+    public CategoryResponse findBySlug(@PathVariable String slug){
         return categoryService.findBySlug(slug);
     }
     @GetMapping("/{uuid}")
-    public CategoryResponse categoryById(@PathVariable UUID uuid){
+    public CategoryResponse findById(@PathVariable UUID uuid){
         return categoryService.findByUuid(uuid);
     }
 
     @PatchMapping("/{uuid}")
-    public CategoryResponse updateCategory(@PathVariable UUID uuid,@Valid @RequestBody UpdateCategoryRequest updateCategoryRequest){
+    public CategoryResponse update(@PathVariable UUID uuid,@Valid @RequestBody UpdateCategoryRequest updateCategoryRequest){
         return categoryService.updateCategory(uuid,updateCategoryRequest);
     }
     @DeleteMapping("/{slug}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void softDeleteCategory(@PathVariable String slug){
-         categoryService.softDeleteCategory(slug);
+    public void softDelete(@PathVariable String slug){
+         categoryService.softDelete(slug);
     }
 
     @GetMapping("/tree")

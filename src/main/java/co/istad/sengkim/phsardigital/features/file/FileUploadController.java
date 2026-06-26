@@ -15,7 +15,7 @@ public class FileUploadController {
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public FileUploadResponse upload(@RequestParam("file") MultipartFile file) {
-        return fileUploadService.uploadFile(file);
+        return fileUploadService.upload(file);
     }
 
     @GetMapping("/{name}/preview")
@@ -25,6 +25,6 @@ public class FileUploadController {
 
     @DeleteMapping("/{name}")
     public void deleteFile(@PathVariable String name) {
-        fileUploadService.deleteFile(name);
+        fileUploadService.delete(name);
     }
 }

@@ -49,7 +49,7 @@ public class FileUploadServiceImpl implements FileUploadService {
     }
 
     @Override
-    public FileUploadResponse uploadFile(MultipartFile file) {
+    public FileUploadResponse upload(MultipartFile file) {
         try {
             String objectName = UUID.randomUUID() + "-" + file.getOriginalFilename();
             minioClient.putObject(
@@ -81,7 +81,7 @@ public class FileUploadServiceImpl implements FileUploadService {
 
     @Override
     @Transactional
-    public void deleteFile(String name) {
+    public void delete(String name) {
         FileUpload file = fileUploadRepository.findByObjectName(name)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "File not found"));
         try {
