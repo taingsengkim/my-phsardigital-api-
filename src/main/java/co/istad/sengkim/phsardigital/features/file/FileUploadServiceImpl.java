@@ -74,9 +74,13 @@ public class FileUploadServiceImpl implements FileUploadService {
 
     @Override
     public FileUploadResponse getByName(String name) {
-        return fileUploadRepository.findByObjectName((name))
-                .map(fileUploadMapper::mapFileUploadToFileUploadResponse)
-                .orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"File not found!"));
+        FileUpload file = fileUploadRepository.findByObjectName(name)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "File not found!"));
+        return new FileUploadResponse(
+                file.getObjectName(),
+                getPreviewUrl(file.getObjectName())
+        );
     }
 
     @Override

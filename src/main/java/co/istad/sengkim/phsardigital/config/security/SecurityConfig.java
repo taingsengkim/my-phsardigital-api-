@@ -28,6 +28,7 @@ public class SecurityConfig {
 
         http.authorizeHttpRequests(auth ->
                 auth.requestMatchers(HttpMethod.GET,"/api/v1/categories/**").permitAll()
+                        .requestMatchers(HttpMethod.POST,"/api/v1/categories/**").hasAnyRole("ADMIN")
                         .requestMatchers("/v3/api-docs/**","/swagger-ui/**","/swagger-ui.html").permitAll()
                         .requestMatchers("/scalar/**").permitAll()
                         .requestMatchers("/api/v1/files/**").permitAll()

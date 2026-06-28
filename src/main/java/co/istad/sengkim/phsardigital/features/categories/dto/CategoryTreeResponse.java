@@ -12,5 +12,4 @@ public record CategoryTreeResponse(
         Integer level,
         List<CategoryTreeResponse> children
 ) {
-
 }
