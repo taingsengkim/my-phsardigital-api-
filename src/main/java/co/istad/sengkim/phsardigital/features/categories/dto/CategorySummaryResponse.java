@@ -1,0 +1,10 @@
+package co.istad.sengkim.phsardigital.features.categories.dto;
+
+import java.util.UUID;
+
+public record CategorySummaryResponse(
+        UUID uuid,
+        String name,
+        String slug
+) {
+}

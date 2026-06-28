@@ -2,7 +2,8 @@ package co.istad.sengkim.phsardigital.features.listings;
 
 import co.istad.sengkim.phsardigital.config.config.BasedEntity;
 import co.istad.sengkim.phsardigital.features.categories.Category;
-import co.istad.sengkim.phsardigital.features.listing_images.dto.ListingImage;
+import co.istad.sengkim.phsardigital.features.listings.listing_images.ListingImage;
+import co.istad.sengkim.phsardigital.features.seller.SellerProfile;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -19,8 +20,7 @@ public class Listing extends BasedEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID uuid;
-    private String sellerId;
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne()
     @JoinColumn(name = "category_uuid")
     private Category category;
     private String title;
@@ -31,9 +31,12 @@ public class Listing extends BasedEntity {
     @Enumerated(EnumType.STRING)
     private ListingStatus status;
     private Boolean isFeatured;
-    private String thumbnailUrl;
+    private String thumbnailObjectName;
     private Integer soldCount;
 
     @OneToMany(mappedBy = "listing", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ListingImage> imagesList = new ArrayList<>();
+
+    @ManyToOne
+    private SellerProfile sellerProfile;
 }

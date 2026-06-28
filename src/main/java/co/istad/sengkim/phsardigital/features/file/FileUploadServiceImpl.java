@@ -32,6 +32,7 @@ public class FileUploadServiceImpl implements FileUploadService {
     /**
      * @implNote: If the bucket is private, create a method in your service
      */
+    private static final int PREVIEW_URL_EXPIRY_SECONDS = 60 * 60 * 24; // 24 hours
     @Override
     public String getPreviewUrl(String objectName) {
         try {
@@ -40,14 +41,13 @@ public class FileUploadServiceImpl implements FileUploadService {
                             .method(Method.GET)
                             .bucket(bucket)
                             .object(objectName)
-                            .expiry(60 * 60)
+                            .expiry(PREVIEW_URL_EXPIRY_SECONDS)
                             .build()
             );
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
-
     @Override
     public FileUploadResponse upload(MultipartFile file) {
         try {

@@ -22,6 +22,6 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://localhost:8080/realms/istad
+          issuer-uri: http://localhost:8080/realms/phsardigital
 server:
   port: 8090

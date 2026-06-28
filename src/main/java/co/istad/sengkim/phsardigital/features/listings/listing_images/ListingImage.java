@@ -1,4 +1,4 @@
-package co.istad.sengkim.phsardigital.features.listing_images.dto;
+package co.istad.sengkim.phsardigital.features.listings.listing_images;
 
 import co.istad.sengkim.phsardigital.features.listings.Listing;
 import jakarta.persistence.*;
@@ -14,9 +14,9 @@ public class ListingImage {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID uuid;
-    private String imageUrl;
+    private String objectName;
     private Integer sortOrder;
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne()
     @JoinColumn(name = "listing_uuid")
     private Listing listing;
     private Boolean isPrimary;
