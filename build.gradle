@@ -32,7 +32,7 @@ dependencies {
     testCompileOnly 'org.projectlombok:lombok'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     testAnnotationProcessor 'org.projectlombok:lombok'
-
+    implementation 'org.keycloak:keycloak-admin-client:26.0.9'
     implementation 'org.springframework.boot:spring-boot-starter-security-oauth2-resource-server'
     testImplementation 'org.springframework.boot:spring-boot-starter-security-oauth2-resource-server-test'
     implementation 'org.mapstruct:mapstruct:1.6.3'

@@ -1,5 +1,6 @@
 package co.istad.projectpracticum.phsardigital.features.listings.listing_images;
 
+import co.istad.projectpracticum.phsardigital.features.file.FileUpload;
 import co.istad.projectpracticum.phsardigital.features.listings.Listing;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -14,10 +15,16 @@ public class ListingImage {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID uuid;
-    private String objectName;
+
+    @ManyToOne
+    @JoinColumn(name = "file_id", nullable = false)
+    private FileUpload file;
+
     private Integer sortOrder;
+
     @ManyToOne()
     @JoinColumn(name = "listing_uuid")
     private Listing listing;
+
     private Boolean isPrimary;
 }

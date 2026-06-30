@@ -2,11 +2,15 @@ package co.istad.projectpracticum.phsardigital.features.listings;
 
 import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingCreateRequest;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingResponse;
+import co.istad.projectpracticum.phsardigital.features.listings.dto.UpdateListingRequest;
+import co.istad.projectpracticum.phsardigital.features.listings.listing_images.dto.AddListingImageRequest;
+import co.istad.projectpracticum.phsardigital.features.listings.listing_images.dto.UpdateThumbnailRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.UUID;
 
@@ -33,5 +37,27 @@ public class ListingController {
     @GetMapping("/{uuid}")
     public ListingResponse getOne(@PathVariable UUID uuid) {
         return listingService.getListing(uuid);
+    }
+
+    @PatchMapping("/{uuid}")
+    public ListingResponse update(@PathVariable UUID uuid, @Valid @RequestBody UpdateListingRequest request) {
+        return listingService.update(uuid, request);
+    }
+
+    @PatchMapping("/{uuid}/thumbnail")
+    public ListingResponse updateThumbnail(
+            @PathVariable UUID uuid,
+            @RequestBody @Valid UpdateThumbnailRequest request) {
+        return listingService.updateThumbnail(uuid, request.objectName());
+    }
+
+    @PostMapping("/{uuid}/images")
+    public ListingResponse addImage(@PathVariable UUID uuid,
+                                    @RequestBody AddListingImageRequest addListingImageRequest) {
+        return listingService.addImage(uuid, addListingImageRequest);
+    }
+    @DeleteMapping("/{uuid}/images/{imageUuid}")
+    public void removeImage(@PathVariable UUID uuid, @PathVariable UUID imageUuid) {
+        listingService.removeImage(uuid, imageUuid);
     }
 }

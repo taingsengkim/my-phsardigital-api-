@@ -3,6 +3,7 @@ package co.istad.projectpracticum.phsardigital.features.listings.dto;
 import co.istad.projectpracticum.phsardigital.features.categories.dto.CategorySummaryResponse;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_images.dto.ListingImageResponse;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingStatus;
+import co.istad.projectpracticum.phsardigital.features.listings.listing_images.dto.ThumbnailImageResponse;
 import co.istad.projectpracticum.phsardigital.features.seller.dto.SellerProfileSummaryResponse;
 
 import java.time.LocalDateTime;
@@ -20,9 +21,9 @@ public record ListingResponse(
         Integer stockQty,
         ListingStatus status,
         Boolean isFeatured,
-        String thumbnailUri,
-        Integer soldCount,
-        List<ListingImageResponse> imagesList,
+        ThumbnailImageResponse thumbnailUri,
+        Integer sold,
+        List<ListingImageResponse> images,
         LocalDateTime createdAt,
         LocalDateTime lastModifiedAt
 ) {

@@ -12,8 +12,6 @@ public record ListingCreateRequest(
         UUID categoryUuid,
         @NotBlank(message = "Title must not be blank")
         String title,
-        @NotBlank(message = "Title must not be blank")
-        String slug,
         String description,
         @NotNull(message = "Price must not be null")
         @DecimalMin(value = "0.0", inclusive = true, message = "Price must not be negative")

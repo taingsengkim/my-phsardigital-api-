@@ -2,7 +2,10 @@ package co.istad.projectpracticum.phsardigital.features.listings;
 
 import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingCreateRequest;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingResponse;
+import co.istad.projectpracticum.phsardigital.features.listings.dto.UpdateListingRequest;
+import co.istad.projectpracticum.phsardigital.features.listings.listing_images.dto.AddListingImageRequest;
 import org.springframework.data.domain.Page;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.UUID;
 
@@ -72,4 +75,35 @@ public interface ListingService {
      */
     ListingResponse create(ListingCreateRequest request);
 
+    /**
+     * Updates the information of an existing listing.
+     *
+     * @param uuid the unique identifier of the listing
+     * @param request the request containing the updated listing information
+     * @return the updated listing
+     */
+    ListingResponse update(UUID uuid, UpdateListingRequest request);
+    /**
+     * Updates the thumbnail image of an existing listing.
+     *
+     * @param uuid the unique identifier of the listing
+     * @param objectName the object name of the uploaded thumbnail image
+     * @return the updated listing
+     */
+    ListingResponse updateThumbnail(UUID uuid, String objectName);
+    /**
+     * Adds a new image to an existing listing.
+     *
+     * @param uuid the unique identifier of the listing
+     * @param addListingImageRequest the request containing the image information
+     * @return the updated listing
+     */
+    ListingResponse addImage(UUID uuid, AddListingImageRequest addListingImageRequest);
+    /**
+     * Removes an image from an existing listing.
+     *
+     * @param uuid the unique identifier of the listing
+     * @param imageUuid the unique identifier of the image to be removed
+     */
+    void removeImage(UUID uuid, UUID imageUuid);
 }

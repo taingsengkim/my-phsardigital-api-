@@ -32,8 +32,7 @@ public interface FileUploadService {
      * @param name the storage object name (key) of the file
      * @return the matching file metadata as a {@link FileUploadResponse}
      */
-    FileUploadResponse getByName(String name);
-
+    FileUploadResponse  getByName(String name);
 
     /**
      * Deletes a file from object storage and removes its associated metadata.

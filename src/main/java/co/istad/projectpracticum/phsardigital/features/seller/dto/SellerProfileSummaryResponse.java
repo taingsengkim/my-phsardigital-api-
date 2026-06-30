@@ -6,7 +6,7 @@ import java.util.List;
 
 public record SellerProfileSummaryResponse(
         @Id
-        String userId,
+        String sellerId,
         String phoneNumber,
         String biography,
         List<String>socialLink
