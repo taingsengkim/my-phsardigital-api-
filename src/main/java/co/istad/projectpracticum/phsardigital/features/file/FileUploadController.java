@@ -6,6 +6,8 @@ import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/v1/files")
 @RequiredArgsConstructor
@@ -17,7 +19,12 @@ public class FileUploadController {
     public FileUploadResponse upload(@RequestParam("file") MultipartFile file) {
         return fileUploadService.upload(file);
     }
-
+    @PostMapping(value = "/upload-multiple", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public List<FileUploadResponse> uploadMultiple(
+            @RequestParam("files") List<MultipartFile> files
+    ) {
+        return fileUploadService.uploadMultiple(files);
+    }
     @GetMapping("/{name}/preview")
     public FileUploadResponse preview(@PathVariable String name) {
         return fileUploadService.getByName(name);

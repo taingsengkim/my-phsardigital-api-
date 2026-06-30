@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -101,5 +102,10 @@ public class FileUploadServiceImpl implements FileUploadService {
         // clear references BEFORE deleting the row, so the FK constraint doesn't trip
         eventPublisher.publishEvent(new FileDeletedEvent(file.getId(), file.getObjectName()));
         fileUploadRepository.delete(file);
+    }
+
+    @Override
+    public List<FileUploadResponse> uploadMultiple(List<MultipartFile> files) {
+        return files.stream().map(this::upload).toList();
     }
 }

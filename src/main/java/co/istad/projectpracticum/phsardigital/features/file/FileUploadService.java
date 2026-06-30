@@ -3,6 +3,8 @@ package co.istad.projectpracticum.phsardigital.features.file;
 import co.istad.projectpracticum.phsardigital.features.file.dto.FileUploadResponse;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
+
 /**
  * Service interface for managing file uploads and retrieval, backed by
  * MinIO object storage. Handles uploading files, resolving presigned
@@ -40,4 +42,6 @@ public interface FileUploadService {
      * @param name the storage object name (key) of the file to delete
      */
     void delete(String name);
+
+    List<FileUploadResponse> uploadMultiple(List<MultipartFile> files);
 }
