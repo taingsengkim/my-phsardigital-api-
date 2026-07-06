@@ -1,6 +1,7 @@
 package co.istad.projectpracticum.phsardigital.features.listings.dto;
 
 import co.istad.projectpracticum.phsardigital.features.categories.dto.CategorySummaryResponse;
+import co.istad.projectpracticum.phsardigital.features.listings.listing_attributes.dto.ListingAttributeResponse;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_images.dto.ListingImageResponse;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingStatus;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_images.dto.ThumbnailImageResponse;
@@ -24,6 +25,7 @@ public record ListingResponse(
         ThumbnailImageResponse thumbnailUri,
         Integer sold,
         List<ListingImageResponse> images,
+        List<ListingAttributeResponse> listingAttributes ,
         LocalDateTime createdAt,
         LocalDateTime lastModifiedAt
 ) {

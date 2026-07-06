@@ -106,4 +106,19 @@ public interface ListingService {
      * @param imageUuid the unique identifier of the image to be removed
      */
     void removeImage(UUID uuid, UUID imageUuid);
+
+
+    /**
+     delete a listing .
+     * @param uuid the unique identifier to delete listing
+     */
+    void delete(UUID uuid);
+
+
+
+
+
+
+
+
 }
