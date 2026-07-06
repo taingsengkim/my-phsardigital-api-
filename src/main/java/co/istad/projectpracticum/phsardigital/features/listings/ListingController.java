@@ -25,6 +25,7 @@ public class ListingController {
     ListingResponse createListing(@Valid @RequestBody ListingCreateRequest listingCreateRequest){
         return listingService.create(listingCreateRequest);
     }
+
     @GetMapping
     public Page<ListingResponse> getAll(@RequestParam(required = false) String status,
                                         @RequestParam(defaultValue = "0") Integer pageNumber,
@@ -34,6 +35,7 @@ public class ListingController {
         }
         return listingService.getAllListingsByStatus(status, pageNumber, pageSize);
     }
+
     @GetMapping("/{uuid}")
     public ListingResponse getOne(@PathVariable UUID uuid) {
         return listingService.getListing(uuid);
@@ -56,8 +58,17 @@ public class ListingController {
                                     @RequestBody AddListingImageRequest addListingImageRequest) {
         return listingService.addImage(uuid, addListingImageRequest);
     }
+
     @DeleteMapping("/{uuid}/images/{imageUuid}")
     public void removeImage(@PathVariable UUID uuid, @PathVariable UUID imageUuid) {
         listingService.removeImage(uuid, imageUuid);
     }
+
+
+    @DeleteMapping("/{uuid}")
+    public void remove(@PathVariable UUID uuid){
+        listingService.delete(uuid);
+    }
+
+
 }

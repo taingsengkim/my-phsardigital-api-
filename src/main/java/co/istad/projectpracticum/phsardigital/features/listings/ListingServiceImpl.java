@@ -192,6 +192,7 @@ public class ListingServiceImpl implements ListingService{
     @Override
     @Transactional
     public void removeImage(UUID listingUuid, UUID imageUuid) {
+
         Listing listing = listingRepository.findByUuidWithDetails(listingUuid)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found"));
         String currentSellerId = AuthUtils.extractUserId();
@@ -241,4 +242,59 @@ public class ListingServiceImpl implements ListingService{
         }
     }
 
+
+    @Override
+    @Transactional
+    public void delete(UUID uuid) {
+
+        // Find the listing
+        Listing listing = listingRepository.findByUuidWithDetails(uuid)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found"));
+
+        // 2. Authorization check
+        String currentSellerId = AuthUtils.extractUserId();
+        if (!listing.getSellerProfile().getSellerId().equals(currentSellerId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "You are not allowed to delete this listing.");
+        }
+
+        // 3. Collect file names
+        List<String> fileNamesToDelete = new ArrayList<>();
+
+        // Add thumbnail
+        if (listing.getThumbnailFile() != null) {
+            fileNamesToDelete.add(listing.getThumbnailFile().getObjectName());
+        }
+
+        // Add all listing images
+        if (listing.getImages() != null && !listing.getImages().isEmpty()) {
+            listing.getImages().forEach(image -> {
+                if (image.getFile() != null) {
+                    fileNamesToDelete.add(image.getFile().getObjectName());
+                }
+            });
+        }
+
+
+        if (!fileNamesToDelete.isEmpty()) {
+            for (String fileName : fileNamesToDelete) {
+                try {
+                    fileUploadService.delete(fileName);
+                } catch (Exception e) {
+
+                    System.err.println("Failed to delete file after listing deletion: " + fileName + " - " + e.getMessage());
+
+                }
+            }
+        }
+
+        listingRepository.delete(listing);
+
+
+
+    }
+
+
+
 }
+
