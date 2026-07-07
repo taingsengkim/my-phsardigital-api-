@@ -35,6 +35,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PATCH,"/api/v1/listings/**").hasAnyRole("SELLER","ADMIN")
                         .requestMatchers(HttpMethod.PUT,"/api/v1/listings/**").hasAnyRole("SELLER","ADMIN")
                         .requestMatchers(HttpMethod.DELETE,"/api/v1/listings/**").hasAnyRole("SELLER","ADMIN")
+                        .requestMatchers("/api/v1/carts/**").hasAnyRole("USER", "ADMIN")
                         .requestMatchers("/v3/api-docs/**","/swagger-ui/**","/swagger-ui.html").permitAll()
                         .requestMatchers("/scalar/**").permitAll()
                         .requestMatchers("/api/v1/files/**").permitAll()
