@@ -98,7 +98,7 @@ public class ListingServiceImpl implements ListingService{
         listing.setStockQty(request.stockQty());
         listing.setIsFeatured(request.isFeatured() != null ? request.isFeatured() : false);
         listing.setThumbnailFile(thumbnailFile);
-        listing.setStatus(ListingStatus.DRAFT);
+        listing.setStatus(ListingStatus.ACTIVE);
         listing.setSold(0);
 
         attachImages(listing, request.images(), imageFiles);
@@ -289,9 +289,6 @@ public class ListingServiceImpl implements ListingService{
         }
 
         listingRepository.delete(listing);
-
-
-
     }
 
 
