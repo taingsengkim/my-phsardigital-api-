@@ -22,11 +22,11 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://localhost:8080/realms/phsardigital
+          issuer-uri: http://localhost:7777/realms/phsardigital
 server:
   port: 8999
 keycloak:
-  server-url: http://localhost:8080
+  server-url: http://localhost:7777
   realm: phsardigital
   client-id: phsardigital-admin
   client-secret: Zoom4OeVj5UAPOFfrhO9nIFKYnaCkhrA
