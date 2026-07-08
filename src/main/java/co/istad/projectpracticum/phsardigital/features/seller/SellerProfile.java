@@ -14,6 +14,7 @@ import java.util.List;
 @Table(name = "seller_profile")
 @NoArgsConstructor
 public class SellerProfile {
+
     public SellerProfile(String userId){
         this.sellerId = userId;
     }

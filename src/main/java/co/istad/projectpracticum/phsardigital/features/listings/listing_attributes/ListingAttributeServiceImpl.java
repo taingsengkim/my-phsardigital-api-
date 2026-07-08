@@ -103,8 +103,6 @@ public class ListingAttributeServiceImpl implements ListingAttributeService {
                 .collect(Collectors.toMap(ListingAttribute::getUuid, Function.identity()));
 
 
-
-
         //  First, validate that all provided UUIDs exist in the listing
         for (UpdateAttributeRequest req : updates) {
             if (!attributeMap.containsKey(req.attributeUuid())) {
