@@ -3,6 +3,7 @@ package co.istad.projectpracticum.phsardigital.features.seller.application;
 import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
 import co.istad.projectpracticum.phsardigital.config.security.KeycloakAdminProps;
 import co.istad.projectpracticum.phsardigital.features.auth.RoleEnum;
+import co.istad.projectpracticum.phsardigital.features.file.FileUploadService;
 import co.istad.projectpracticum.phsardigital.features.seller.SellerProfile;
 import co.istad.projectpracticum.phsardigital.features.seller.SellerRepository;
 import co.istad.projectpracticum.phsardigital.features.seller.application.dto.*;
@@ -31,6 +32,8 @@ public class SellerApplicationServiceImpl implements SellerApplicationService {
     private final SellerRepository sellerRepository;
     private final Keycloak keycloak;
     private final KeycloakAdminProps props;
+    private final SellerApplicationMapper sellerApplicationMapper;
+    private final FileUploadService fileUploadService;
 
     // applicant
 
@@ -72,7 +75,7 @@ public class SellerApplicationServiceImpl implements SellerApplicationService {
 
     @Override
     @Transactional
-    public SellerApplicationResponse addDocument(AddDocumentRequest request) {
+    public ApplicationDocumentResponse addDocument(AddDocumentRequest request) {
         String applicantId = AuthUtils.extractUserId();
         SellerApplication app = applicationRepository
                 .findByApplicantIdAndStatus(applicantId, ApplicationStatus.PENDING)
@@ -84,8 +87,9 @@ public class SellerApplicationServiceImpl implements SellerApplicationService {
         doc.setDocType(request.docType());
         doc.setObjectName(request.objectName());
         documentRepository.save(doc);
+        String uri = fileUploadService.getPreviewUrl(doc.getObjectName());
 
-        return toResponse(app);
+        return sellerApplicationMapper.toDocResponse(uri,doc);
     }
 
     // admin
