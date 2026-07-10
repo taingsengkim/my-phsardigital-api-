@@ -5,9 +5,8 @@ import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
 import co.istad.projectpracticum.phsardigital.features.listings.Listing;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingMapper;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingRepository;
-import co.istad.projectpracticum.phsardigital.features.listings.ListingStatus;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingResponse;
-import co.istad.projectpracticum.phsardigital.features.user.User;
+import co.istad.projectpracticum.phsardigital.features.user.UserProfile;
 import co.istad.projectpracticum.phsardigital.features.user.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -33,12 +32,12 @@ public class FavoriteServiceImpl implements FavoriteService {
     public Page<ListingResponse> getFavorites(Pageable pageable) {
 
         // 1. Get current authenticated user
-        User user = userRepository.findById(AuthUtils.extractUserId())
+        UserProfile userProfile = userRepository.findById(AuthUtils.extractUserId())
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "User not found"));
 
         // 2. Fetch paginated favorites
-        Page<Favorite> favoritesPage = favoriteRepository.findByUser(user, pageable);
+        Page<Favorite> favoritesPage = favoriteRepository.findByUserProfile(userProfile, pageable);
 
         // 3. Map each Favorite to ListingResponse
         return favoritesPage.map(favorite -> {
@@ -53,7 +52,7 @@ public class FavoriteServiceImpl implements FavoriteService {
     public String addFavorite(UUID listingUuid) {
 
         // 1. Get current user
-        User user = userRepository.findById(AuthUtils.extractUserId())
+        UserProfile userProfile = userRepository.findById(AuthUtils.extractUserId())
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "User not found"));
 
@@ -64,7 +63,7 @@ public class FavoriteServiceImpl implements FavoriteService {
 
 
         // 3. Check duplicate
-        if (favoriteRepository.existsByUserAndListingUuid(user, listingUuid)) {
+        if (favoriteRepository.existsByUserProfileAndListingUuid(userProfile, listingUuid)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Listing already in favorites");
 
@@ -73,7 +72,7 @@ public class FavoriteServiceImpl implements FavoriteService {
 
         // 4. Save new favorite
         Favorite favorite = new Favorite();
-        favorite.setUser(user);
+        favorite.setUserProfile(userProfile);
         favorite.setListing(listing);
         favoriteRepository.save(favorite);
         return "List save to favorite successfully";
@@ -85,11 +84,11 @@ public class FavoriteServiceImpl implements FavoriteService {
 
         // 1. Get current user
         String currentUserId = AuthUtils.extractUserId();
-        User user = userRepository.findById(currentUserId)
+        UserProfile userProfile = userRepository.findById(currentUserId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
         // 2. Fetch all favorites for this user and the given listing UUIDs
-        List<Favorite> favorites = favoriteRepository.findAllByUserAndListingUuidIn(user, listingUuids);
+        List<Favorite> favorites = favoriteRepository.findAllByUserProfileAndListingUuidIn(userProfile, listingUuids);
 
         // 3. Optional: check if all were found
          if (favorites.size() != listingUuids.size()) {

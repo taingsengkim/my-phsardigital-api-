@@ -6,30 +6,28 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.UUID;
 
 @Entity
 @Table(name = "users")
 @Getter
 @Setter
 @NoArgsConstructor
-public class User  {
+public class UserProfile extends BasedEntity {
 
-    public User(String userId){
+    public UserProfile(String userId) {
         this.id = userId;
     }
+
+    // = Keycloak `sub`. Not generated — set from the token on first sync.
     @Id
     private String id;
 
+    // Cached from Keycloak (authoritative there). Kept local for display/joins.
     @Column(nullable = false, unique = true, length = 255)
     private String email;
 
-    @Column(name = "password_hash", nullable = false, columnDefinition = "TEXT")
-    private String passwordHash;
-
-    @Column(name = "full_name", nullable = false, length = 255)
+    @Column(name = "full_name", length = 255)
     private String fullName;
 
     @Column(length = 30)
@@ -38,15 +36,10 @@ public class User  {
     @Column(name = "avatar_url", columnDefinition = "TEXT")
     private String avatarUrl;
 
-    @Column(name = "status", length = 20)
-    private String status;
-
-    @Column(precision = 10, scale = 8)
-    private BigDecimal latitude;
-
-    @Column(precision = 11, scale = 8)
-    private BigDecimal longitude;
-
     @Column(name = "date_of_birth")
     private LocalDate dateOfBirth;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private UserStatus status = UserStatus.ACTIVE;
 }

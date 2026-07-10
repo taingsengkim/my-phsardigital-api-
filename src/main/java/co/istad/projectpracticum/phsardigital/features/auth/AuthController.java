@@ -1,6 +1,7 @@
 package co.istad.projectpracticum.phsardigital.features.auth;
 
 import co.istad.projectpracticum.phsardigital.features.auth.dto.RegisterRequest;
+import co.istad.projectpracticum.phsardigital.features.auth.dto.RegisterResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -13,7 +14,7 @@ public class AuthController {
     private final AuthService authService;
     @PostMapping("/register")
     @ResponseStatus(HttpStatus.CREATED)
-    public void register(@Valid @RequestBody RegisterRequest registerRequest){
-        authService.register(registerRequest);
+    public RegisterResponse register(@Valid @RequestBody RegisterRequest registerRequest){
+        return authService.register(registerRequest);
     }
 }
