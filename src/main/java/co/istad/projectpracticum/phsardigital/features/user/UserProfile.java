@@ -19,11 +19,9 @@ public class UserProfile extends BasedEntity {
         this.id = userId;
     }
 
-    // = Keycloak `sub`. Not generated — set from the token on first sync.
     @Id
     private String id;
 
-    // Cached from Keycloak (authoritative there). Kept local for display/joins.
     @Column(nullable = false, unique = true, length = 255)
     private String email;
 

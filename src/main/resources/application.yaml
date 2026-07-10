@@ -8,7 +8,7 @@ spring:
     name: phsardigital
   jpa:
     hibernate:
-      ddl-auto: create
+      ddl-auto: update
   servlet:
     multipart:
       max-file-size: 20MB

@@ -7,7 +7,7 @@ import co.istad.projectpracticum.phsardigital.features.listings.ListingMapper;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingRepository;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingResponse;
 import co.istad.projectpracticum.phsardigital.features.user.UserProfile;
-import co.istad.projectpracticum.phsardigital.features.user.UserRepository;
+import co.istad.projectpracticum.phsardigital.features.user.UserProfileRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -24,7 +24,7 @@ import java.util.UUID;
 public class FavoriteServiceImpl implements FavoriteService {
 
     private final FavoriteRepository favoriteRepository;
-    private final UserRepository userRepository;
+    private final UserProfileRepository userProfileRepository;
     private final ListingRepository listingRepository;
     private final ListingMapper listingMapper;
 
@@ -32,7 +32,7 @@ public class FavoriteServiceImpl implements FavoriteService {
     public Page<ListingResponse> getFavorites(Pageable pageable) {
 
         // 1. Get current authenticated user
-        UserProfile userProfile = userRepository.findById(AuthUtils.extractUserId())
+        UserProfile userProfile = userProfileRepository.findById(AuthUtils.extractUserId())
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "User not found"));
 
@@ -52,7 +52,7 @@ public class FavoriteServiceImpl implements FavoriteService {
     public String addFavorite(UUID listingUuid) {
 
         // 1. Get current user
-        UserProfile userProfile = userRepository.findById(AuthUtils.extractUserId())
+        UserProfile userProfile = userProfileRepository.findById(AuthUtils.extractUserId())
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "User not found"));
 
@@ -84,7 +84,7 @@ public class FavoriteServiceImpl implements FavoriteService {
 
         // 1. Get current user
         String currentUserId = AuthUtils.extractUserId();
-        UserProfile userProfile = userRepository.findById(currentUserId)
+        UserProfile userProfile = userProfileRepository.findById(currentUserId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
         // 2. Fetch all favorites for this user and the given listing UUIDs
