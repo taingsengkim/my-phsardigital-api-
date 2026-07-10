@@ -23,8 +23,8 @@ public class UserProfileServiceImpl implements UserProfileService {
     @Override
     public UserProfileResponse getMe() {
         String userId = AuthUtils.extractUserId();
-        return profileMapper.toResponse(userProfileRepository.findById(userId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Profile not found.")));
+        UserProfile userProfile = userProfileRepository.findById(userId).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"User not found!"));
+        return profileMapper.toResponse(userProfile);
     }
 
     @Override
