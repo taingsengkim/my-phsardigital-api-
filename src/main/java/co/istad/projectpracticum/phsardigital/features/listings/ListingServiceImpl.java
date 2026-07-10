@@ -82,9 +82,9 @@ public class ListingServiceImpl implements ListingService{
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Seller profile not found. Please complete seller registration first."));
 
-        FileUpload thumbnailFile = fileUploadRepository.findByObjectName(request.thumbnailUrl())
+        FileUpload thumbnailFile = fileUploadRepository.findByObjectName(request.thumbnailObjectName())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Thumbnail file not found: " + request.thumbnailUrl() + ". Please upload it first."));
+                        "Thumbnail file not found: " + request.thumbnailObjectName() + ". Please upload it first."));
 
         Map<String, FileUpload> imageFiles = resolveImageFiles(request.images());
 
@@ -98,7 +98,7 @@ public class ListingServiceImpl implements ListingService{
         listing.setStockQty(request.stockQty());
         listing.setIsFeatured(request.isFeatured() != null ? request.isFeatured() : false);
         listing.setThumbnailFile(thumbnailFile);
-        listing.setStatus(ListingStatus.DRAFT);
+        listing.setStatus(ListingStatus.ACTIVE);
         listing.setSold(0);
 
         attachImages(listing, request.images(), imageFiles);
@@ -289,9 +289,6 @@ public class ListingServiceImpl implements ListingService{
         }
 
         listingRepository.delete(listing);
-
-
-
     }
 
 

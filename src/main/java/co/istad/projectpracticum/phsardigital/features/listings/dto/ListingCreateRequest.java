@@ -29,7 +29,7 @@ public record ListingCreateRequest(
         Boolean isFeatured,
 
         @NotNull(message = "Thumbnail must not be null")
-        String thumbnailUrl,
+        String thumbnailObjectName,
 
         @Valid
         List<ListingImageRequest> images ,
