@@ -29,4 +29,9 @@ keycloak:
   server-url: http://localhost:8082
   realm: phsardigital
   client-id: phsar_digital_client
+<<<<<<< Updated upstream
   client-secret: turbnHaw2r7unjrVa2fuYWDnqFAErJkU
+=======
+  client-secret: turbnHaw2r7unjrVa2fuYWDnqFAErJkU
+  target-realm: phsardigital
+>>>>>>> Stashed changes

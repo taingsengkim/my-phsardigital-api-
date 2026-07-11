@@ -23,7 +23,18 @@ public class SellerProfile {
     @Column(length = 20)
     private String phoneNumber;
     @Column(length = 1000)
+    private String description;
+
+    @Column(length = 1000)
     private String biography;
+<<<<<<< Updated upstream
+=======
+
+    private String address ;
+    private String city ;
+    private String province ;
+
+>>>>>>> Stashed changes
     @ElementCollection
     @CollectionTable(
             name = "seller_social_links",
