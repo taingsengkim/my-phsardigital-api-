@@ -10,7 +10,7 @@ public interface SellerApplicationService {
     // applicant
     SellerApplicationResponse apply(SellerApplicationRequest request);
     SellerApplicationResponse getMyApplication();
-    SellerApplicationResponse addDocument(AddDocumentRequest request);
+    ApplicationDocumentResponse addDocument(AddDocumentRequest request);
 
     // admin
     Page<SellerApplicationResponse> list(ApplicationStatus status, int pageNumber, int pageSize);

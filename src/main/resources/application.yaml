@@ -1,5 +1,5 @@
 minio:
-  url: http://localhost:9000
+  url: https://file.quizzy.it.com/
   access-key: admin
   secret-key: admin123
   bucket: products
@@ -22,12 +22,12 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://localhost:7777/realms/phsardigital
+          issuer-uri: https://auth.quizzy.it.com/realms/phsardigital
 server:
   port: 8999
 keycloak:
-  server-url: http://localhost:7777
+  server-url: https://auth.quizzy.it.com/
   realm: phsardigital
   client-id: phsardigital-admin
-  client-secret: yQP1qkPanZgD40UWj8JNGWochLW3zfmM
+  client-secret: idh56ELtGEuuUVGVSeIWoRw2F8Ul5H5M
   target-realm: phsardigital

@@ -25,7 +25,7 @@ public class SellerApplicationController {
     }
 
     @PostMapping("/me/documents")
-    public SellerApplicationResponse addDocument(@Valid @RequestBody AddDocumentRequest request) {
+    public ApplicationDocumentResponse addDocument(@Valid @RequestBody AddDocumentRequest request) {
         return service.addDocument(request);
     }
 }
