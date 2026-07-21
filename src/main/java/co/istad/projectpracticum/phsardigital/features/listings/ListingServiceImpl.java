@@ -10,6 +10,7 @@ import co.istad.projectpracticum.phsardigital.features.file.FileUploadService;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingCreateRequest;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingResponse;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.UpdateListingRequest;
+import co.istad.projectpracticum.phsardigital.features.listings.listing_attributes.ListingAttribute;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_images.ListingImage;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_images.dto.AddListingImageRequest;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_images.dto.ListingImageRequest;
@@ -100,6 +101,21 @@ public class ListingServiceImpl implements ListingService{
         listing.setThumbnailFile(thumbnailFile);
         listing.setStatus(ListingStatus.DRAFT);
         listing.setSold(0);
+
+        if (request.listingAttributes() != null) {
+            List<ListingAttribute> attributes = request.listingAttributes().stream()
+                    .map(attrDto -> {
+                        ListingAttribute attribute = new ListingAttribute();
+                        attribute.setKey(attrDto.key());
+                        attribute.setValue(attrDto.value());
+                        attribute.setSortOrder(attrDto.sortOrder() != null ? attrDto.sortOrder() : 0);
+                        attribute.setListing(listing);   // 👈 **CRITICAL** - set the parent
+                        return attribute;
+                    })
+                    .collect(Collectors.toList());
+            listing.setListingAttributes(attributes);
+        }
+
 
         attachImages(listing, request.images(), imageFiles);
 

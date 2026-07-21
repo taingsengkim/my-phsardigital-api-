@@ -31,4 +31,3 @@ keycloak:
   client-id: phsar_digital_client
   client-secret: turbnHaw2r7unjrVa2fuYWDnqFAErJkU
   target-realm: phsardigital
-
