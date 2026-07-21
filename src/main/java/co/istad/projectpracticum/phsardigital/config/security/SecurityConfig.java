@@ -25,7 +25,13 @@ public class SecurityConfig {
         //Security Mechani
         http.oauth2ResourceServer(oauth->
                 oauth.jwt(Customizer.withDefaults()));
-
+        http.cors(cors -> cors.configurationSource(request -> {
+            var config = new org.springframework.web.cors.CorsConfiguration();
+            config.setAllowedOriginPatterns(java.util.List.of("http://localhost:3000"));
+            config.setAllowedMethods(java.util.List.of("*"));
+            config.setAllowedHeaders(java.util.List.of("*"));
+            return config;
+        }));
         http.authorizeHttpRequests(auth ->
                 auth.requestMatchers(HttpMethod.GET,"/api/v1/categories","/api/v1/categories/**").permitAll()
                         .requestMatchers(HttpMethod.GET,"/api/v1/listings", "/api/v1/listings/**").permitAll()
@@ -41,7 +47,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/seller-applications/**").hasAnyRole("USER", "ADMIN")
                         .requestMatchers("/api/v1/purchases/seller/**").hasAnyRole("SELLER", "ADMIN")
                         .requestMatchers("/api/v1/purchases/**").hasAnyRole("USER", "SELLER", "ADMIN")
+                        .requestMatchers("/api/v1/conversations/**").authenticated()
                         .requestMatchers("/v3/api-docs/**","/swagger-ui/**","/swagger-ui.html").permitAll()
+                        .requestMatchers("/ws/**").permitAll()
                         .requestMatchers("/scalar/**").permitAll()
                         .requestMatchers("/api/v1/files/**").permitAll()
                         .anyRequest().authenticated());
