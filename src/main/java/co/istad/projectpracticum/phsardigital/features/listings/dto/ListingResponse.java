@@ -28,5 +28,7 @@ public record ListingResponse(
         List<ListingAttributeResponse> listingAttributes ,
         LocalDateTime createdAt,
         LocalDateTime lastModifiedAt
+//        Double averageRating ,
+//        Integer reviewCount
 ) {
 }

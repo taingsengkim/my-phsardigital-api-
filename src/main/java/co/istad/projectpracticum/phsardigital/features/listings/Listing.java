@@ -71,4 +71,10 @@ public class Listing extends BasedEntity {
     private List<ListingAttribute> listingAttributes ;
 
 
+//    @Column(name = "average_rating")
+//    private Double averageRating = 0.0;
+//
+//    @Column(name = "review_count")
+//    private Integer reviewCount = 0;
+
 }

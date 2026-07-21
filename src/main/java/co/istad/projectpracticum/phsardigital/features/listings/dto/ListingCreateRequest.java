@@ -1,6 +1,7 @@
 package co.istad.projectpracticum.phsardigital.features.listings.dto;
 
 import co.istad.projectpracticum.phsardigital.features.listings.listing_attributes.ListingAttribute;
+import co.istad.projectpracticum.phsardigital.features.listings.listing_attributes.dto.ListingAttributeCreateRequest;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_images.dto.ListingImageRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
@@ -35,6 +36,6 @@ public record ListingCreateRequest(
         List<ListingImageRequest> images ,
 
         @Valid
-        List<ListingAttribute> listingAttributes
+        List<ListingAttributeCreateRequest> listingAttributes
 ) {
 }
