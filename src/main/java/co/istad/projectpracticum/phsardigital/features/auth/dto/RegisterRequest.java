@@ -1,7 +1,6 @@
 package co.istad.projectpracticum.phsardigital.features.auth.dto;
 
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.*;
 
 public record RegisterRequest(
         @NotBlank(message = "Username is required")
@@ -10,11 +9,13 @@ public record RegisterRequest(
         String password,
         @NotBlank(message = "Confirm Password is required")
         String confirmPassword,
-        @Email
         String email,
         @NotBlank(message = "First name is required")
         String firstName,
         @NotBlank(message = "Last name is required")
-        String lastName
+        String lastName,
+        @NotBlank
+        @Pattern(regexp = "^\\d{9,11}$", message = "Phone number must contain 9 to 11 digits")
+        String phoneNumber
 ) {
 }

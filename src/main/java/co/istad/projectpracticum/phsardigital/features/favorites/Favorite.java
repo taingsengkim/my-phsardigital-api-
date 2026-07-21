@@ -3,8 +3,7 @@ package co.istad.projectpracticum.phsardigital.features.favorites;
 
 import co.istad.projectpracticum.phsardigital.config.config.BasedEntity;
 import co.istad.projectpracticum.phsardigital.features.listings.Listing;
-import co.istad.projectpracticum.phsardigital.features.seller.SellerProfile;
-import co.istad.projectpracticum.phsardigital.features.user.User;
+import co.istad.projectpracticum.phsardigital.features.user.UserProfile;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -23,7 +22,7 @@ public class Favorite extends BasedEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
-    private User user;
+    private UserProfile userProfile;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "listing_uuid", nullable = false)

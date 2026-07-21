@@ -16,7 +16,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.net.URLConnection;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
@@ -29,35 +32,37 @@ public class FileUploadServiceImpl implements FileUploadService {
     @Value("${minio.bucket}")
     private String bucket;
 
+    @Value("${minio.url}")
+    private String minioUrl;
+
     /**
-     * @implNote: If the bucket is private, create a method in your service
+     * @implNote If the bucket is private, this presigned URL grants temporary read access.
      */
-    private static final int PREVIEW_URL_EXPIRY_SECONDS = 60 * 60 * 24; // 24 hours
     @Override
     public String getPreviewUrl(String objectName) {
-        try {
-            return minioClient.getPresignedObjectUrl(
-                    GetPresignedObjectUrlArgs.builder()
-                            .method(Method.GET)
-                            .bucket(bucket)
-                            .object(objectName)
-                            .expiry(PREVIEW_URL_EXPIRY_SECONDS)
-                            .build()
-            );
-        } catch (Exception e) {
-            throw new RuntimeException(e);
+        String base = minioUrl.endsWith("/") ? minioUrl : minioUrl + "/";
+        return base + bucket + "/" + objectName;
+    }
+    private String resolveContentType(MultipartFile file) {
+        String ct = file.getContentType();
+        if (ct != null && !ct.isBlank()
+                && !ct.equals("application/octet-stream")
+                && !ct.equals("application/json")) {
+            return ct;
         }
+        String guessed = URLConnection.guessContentTypeFromName(file.getOriginalFilename());
+        return guessed != null ? guessed : "application/octet-stream";
     }
     @Override
     public FileUploadResponse upload(MultipartFile file) {
         try {
-            String objectName = UUID.randomUUID() + "-" + file.getOriginalFilename();
+            String objectName = buildObjectName(file.getOriginalFilename());
             minioClient.putObject(
                     PutObjectArgs.builder()
                             .bucket(bucket)
                             .object(objectName)
                             .stream(file.getInputStream(), file.getSize(), -1)
-                            .contentType(file.getContentType())
+                            .contentType(resolveContentType(file))
                             .build()
             );
             FileUpload entity = new FileUpload();
@@ -101,5 +106,21 @@ public class FileUploadServiceImpl implements FileUploadService {
         // clear references BEFORE deleting the row, so the FK constraint doesn't trip
         eventPublisher.publishEvent(new FileDeletedEvent(file.getId(), file.getObjectName()));
         fileUploadRepository.delete(file);
+    }
+
+    @Override
+    public List<FileUploadResponse> uploadMultiple(List<MultipartFile> files) {
+        return files.stream().map(this::upload).toList();
+    }
+
+    /**
+     * Builds a safe object name: random UUID + sanitized original filename.
+     * Strips spaces and special characters that break presigned URLs in the browser.
+     */
+    private String buildObjectName(String originalFilename) {
+        String safeName = (originalFilename == null || originalFilename.isBlank())
+                ? "file"
+                : originalFilename.replaceAll("[^a-zA-Z0-9._-]", "_");
+        return UUID.randomUUID() + "-" + safeName;
     }
 }

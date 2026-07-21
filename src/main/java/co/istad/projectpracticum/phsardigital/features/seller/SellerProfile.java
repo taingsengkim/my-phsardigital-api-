@@ -1,5 +1,6 @@
 package co.istad.projectpracticum.phsardigital.features.seller;
 
+import co.istad.projectpracticum.phsardigital.config.config.BasedEntity;
 import co.istad.projectpracticum.phsardigital.features.listings.Listing;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -10,11 +11,11 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 @Entity
+@Table(name = "seller_profiles")
 @Getter
 @Setter
-@Table(name = "seller_profiles")
 @NoArgsConstructor
-public class SellerProfile {
+public class SellerProfile extends BasedEntity {
     public SellerProfile(String userId) {
         this.sellerId = userId;
     }
