@@ -46,6 +46,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PUT,"/api/v1/listings/**").hasAnyRole("SELLER","ADMIN")
                         .requestMatchers(HttpMethod.DELETE,"/api/v1/listings/**").hasAnyRole("SELLER","ADMIN")
                         .requestMatchers("/api/v1/carts/**").hasAnyRole("USER", "ADMIN")
+                        .requestMatchers("/api/v1/admin/users/**").hasRole("ADMIN")
                         .requestMatchers("/api/v1/admin/seller-applications/**").hasRole("ADMIN")
                         .requestMatchers("/api/v1/user-profiles/**").authenticated()
                         .requestMatchers("/api/v1/seller-applications/**").hasAnyRole("USER", "ADMIN")

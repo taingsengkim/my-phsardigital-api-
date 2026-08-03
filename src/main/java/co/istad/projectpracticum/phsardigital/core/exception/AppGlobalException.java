@@ -1,5 +1,6 @@
 package co.istad.projectpracticum.phsardigital.core.exception;
 
+import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -33,6 +34,23 @@ public class AppGlobalException {
                 .getFieldErrors()
                 .stream()
                 .map(this::toFieldResponse)
+                .toList();
+        HttpStatus status = HttpStatus.BAD_REQUEST;
+        return ResponseEntity.status(status).body(
+                buildError(status, "Request validation failed.", fields)
+        );
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<RestErrorResponse> handleConstraintViolationException(
+            ConstraintViolationException exception
+    ) {
+        List<FieldResponse> fields = exception.getConstraintViolations()
+                .stream()
+                .map(violation -> new FieldResponse(
+                        violation.getPropertyPath().toString(),
+                        violation.getMessage()
+                ))
                 .toList();
         HttpStatus status = HttpStatus.BAD_REQUEST;
         return ResponseEntity.status(status).body(
