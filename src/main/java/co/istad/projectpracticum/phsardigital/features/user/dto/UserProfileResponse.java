@@ -3,6 +3,7 @@ package co.istad.projectpracticum.phsardigital.features.user.dto;
 import lombok.Builder;
 
 import java.time.LocalDate;
+import java.util.List;
 
 @Builder
 public record UserProfileResponse(

@@ -2,6 +2,7 @@ package co.istad.projectpracticum.phsardigital.config.security;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
@@ -20,6 +21,9 @@ import java.util.stream.Collectors;
 
 @Configuration
 public class SecurityConfig {
+    @Value("${app.cors.allowed-origin-patterns:http://localhost:3000}")
+    private java.util.List<String> allowedOriginPatterns;
+
     @Bean
     public SecurityFilterChain apiSecurity(HttpSecurity http) {
         //Security Mechani
@@ -27,7 +31,7 @@ public class SecurityConfig {
                 oauth.jwt(Customizer.withDefaults()));
         http.cors(cors -> cors.configurationSource(request -> {
             var config = new org.springframework.web.cors.CorsConfiguration();
-            config.setAllowedOriginPatterns(java.util.List.of("http://localhost:3000"));
+            config.setAllowedOriginPatterns(allowedOriginPatterns);
             config.setAllowedMethods(java.util.List.of("*"));
             config.setAllowedHeaders(java.util.List.of("*"));
             return config;
@@ -51,6 +55,7 @@ public class SecurityConfig {
                         .requestMatchers("/v3/api-docs/**","/swagger-ui/**","/swagger-ui.html").permitAll()
                         .requestMatchers("/ws/**").permitAll()
                         .requestMatchers("/scalar/**").permitAll()
+                        .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
                         .requestMatchers("/api/v1/files/**").permitAll()
                         .anyRequest().authenticated());
 

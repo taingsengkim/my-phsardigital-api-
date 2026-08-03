@@ -1,14 +1,18 @@
 package co.istad.projectpracticum.phsardigital.features.auth;
 
+import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
 import co.istad.projectpracticum.phsardigital.config.security.KeycloakAdminProps;
+import co.istad.projectpracticum.phsardigital.features.auth.dto.MeResponse;
 import co.istad.projectpracticum.phsardigital.features.auth.dto.RegisterRequest;
 import co.istad.projectpracticum.phsardigital.features.auth.dto.RegisterResponse;
+import co.istad.projectpracticum.phsardigital.features.seller.SellerRepository;
 import co.istad.projectpracticum.phsardigital.features.user.UserProfile;
 import co.istad.projectpracticum.phsardigital.features.user.UserProfileRepository;
 import co.istad.projectpracticum.phsardigital.features.user.UserStatus;
 import jakarta.ws.rs.core.Response;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.tomcat.util.net.openssl.ciphers.Authentication;
 import org.keycloak.admin.client.Keycloak;
 import org.keycloak.admin.client.resource.UserResource;
 import org.keycloak.admin.client.resource.UsersResource;
@@ -16,6 +20,7 @@ import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -29,6 +34,7 @@ public class AuthServiceImpl implements AuthService{
     private final UserProfileRepository userProfileRepository;
     private final KeycloakAdminProps props;
     private final AuthMapper authMapper;
+    private final SellerRepository sellerRepository;
 
 
     @Override

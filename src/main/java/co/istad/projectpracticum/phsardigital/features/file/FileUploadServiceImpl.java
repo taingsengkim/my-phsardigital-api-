@@ -32,7 +32,7 @@ public class FileUploadServiceImpl implements FileUploadService {
     @Value("${minio.bucket}")
     private String bucket;
 
-    @Value("${minio.url}")
+    @Value("${minio.public-url}")
     private String minioUrl;
 
     /**

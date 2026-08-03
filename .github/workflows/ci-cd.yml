@@ -1,0 +1,215 @@
+name: CI/CD
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test with Java 25
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci-password
+          POSTGRES_DB: phsardigital_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d phsardigital_db"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DB_URL: jdbc:postgresql://localhost:5432/phsardigital_db
+      DB_USERNAME: ci
+      DB_PASSWORD: ci-password
+      JWT_ISSUER_URI: http://localhost:8080/realms/phsardigital
+      JWT_JWK_SET_URI: http://localhost:8080/realms/phsardigital/protocol/openid-connect/certs
+      KEYCLOAK_SERVER_URL: http://localhost:8080
+      KEYCLOAK_CLIENT_SECRET: ci-client-secret
+      MINIO_URL: http://localhost:9000
+      MINIO_PUBLIC_URL: http://localhost:9000
+      MINIO_ACCESS_KEY: ci-access-key
+      MINIO_SECRET_KEY: ci-secret-key
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: gradle
+
+      - name: Run tests
+        run: ./gradlew test --no-daemon
+
+  publish:
+    name: Build and publish image
+    needs: test
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.image.outputs.ref }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Resolve image name
+        id: image
+        shell: bash
+        run: |
+          image_name="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "name=$image_name" >> "$GITHUB_OUTPUT"
+          echo "ref=$image_name:$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build and push image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.image.outputs.ref }}
+            ${{ steps.image.outputs.name }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
+
+  deploy:
+    name: Deploy production
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_URL }}
+    concurrency:
+      group: production
+      cancel-in-progress: false
+    env:
+      APP_IMAGE: ${{ needs.publish.outputs.image }}
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+      DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/phsardigital' }}
+      SSH_TARGET: ${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Validate deployment settings
+        shell: bash
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          test -n "$DEPLOY_HOST" || { echo "Missing production variable DEPLOY_HOST"; exit 1; }
+          test -n "$DEPLOY_USER" || { echo "Missing production variable DEPLOY_USER"; exit 1; }
+          test -n "$DEPLOY_SSH_KEY" || { echo "Missing production secret DEPLOY_SSH_KEY"; exit 1; }
+          test -n "$DEPLOY_KNOWN_HOSTS" || { echo "Missing production secret DEPLOY_KNOWN_HOSTS"; exit 1; }
+          [[ "$DEPLOY_PORT" =~ ^[0-9]+$ ]] || { echo "DEPLOY_PORT must be numeric"; exit 1; }
+          [[ "$DEPLOY_PATH" =~ ^/[A-Za-z0-9._/-]+$ ]] || { echo "DEPLOY_PATH must be an absolute path without spaces"; exit 1; }
+
+      - name: Configure SSH
+        shell: bash
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/id_deploy"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/id_deploy" "$HOME/.ssh/known_hosts"
+
+      - name: Upload deployment files
+        shell: bash
+        run: |
+          tar -C phsardigital-docker -czf deployment.tar.gz \
+            docker-compose.prod.yml init-scripts .env.example
+          ssh -i "$HOME/.ssh/id_deploy" -p "$DEPLOY_PORT" "$SSH_TARGET" \
+            "install -d -m 755 '$DEPLOY_PATH'"
+          scp -i "$HOME/.ssh/id_deploy" -P "$DEPLOY_PORT" deployment.tar.gz \
+            "$SSH_TARGET:$DEPLOY_PATH/deployment.tar.gz"
+
+      - name: Log server in to GHCR
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$GHCR_TOKEN" | ssh -i "$HOME/.ssh/id_deploy" -p "$DEPLOY_PORT" \
+            "$SSH_TARGET" "docker login ghcr.io --username '${{ github.actor }}' --password-stdin"
+
+      - name: Deploy exact image
+        shell: bash
+        run: |
+          ssh -i "$HOME/.ssh/id_deploy" -p "$DEPLOY_PORT" "$SSH_TARGET" \
+            "DEPLOY_PATH='$DEPLOY_PATH' APP_IMAGE='$APP_IMAGE' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+          cd "$DEPLOY_PATH"
+          tar -xzf deployment.tar.gz
+          rm -f deployment.tar.gz
+
+          if [[ ! -f .env ]]; then
+            echo "Missing $DEPLOY_PATH/.env; copy .env.example to .env and set production values."
+            exit 1
+          fi
+
+          docker network inspect phsardigital >/dev/null 2>&1 || docker network create phsardigital
+          export APP_IMAGE
+          compose=(docker compose --env-file .env -f docker-compose.prod.yml)
+          "${compose[@]}" config --quiet
+
+          previous_image="$(docker inspect --format='{{.Config.Image}}' phsardigital-api 2>/dev/null || true)"
+          "${compose[@]}" pull api
+
+          if ! "${compose[@]}" up -d --wait --wait-timeout 240 --remove-orphans; then
+            "${compose[@]}" logs --tail=200 api
+            if [[ -n "$previous_image" ]]; then
+              echo "Deployment failed; rolling back to $previous_image"
+              export APP_IMAGE="$previous_image"
+              "${compose[@]}" up -d --wait --wait-timeout 240 api || true
+            fi
+            exit 1
+          fi
+
+          "${compose[@]}" ps
+          REMOTE
+
+      - name: Log server out of GHCR
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          ssh -i "$HOME/.ssh/id_deploy" -p "$DEPLOY_PORT" "$SSH_TARGET" \
+            "docker logout ghcr.io"
