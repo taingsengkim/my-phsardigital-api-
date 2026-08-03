@@ -1,129 +1,38 @@
-name: phsardigital
+name: phsardigital-api
 
 services:
-  db:
-    image: postgres:18.4
-    container_name: phsardigital-db
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-phsardigital}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
-    volumes:
-      - postgres-data:/var/lib/postgresql
-      - ./init-scripts:/docker-entrypoint-initdb.d:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    networks:
-      - phsardigital
-    restart: unless-stopped
-
-  keycloak:
-    image: quay.io/keycloak/keycloak:26.6.4
-    container_name: phsardigital-kc
-    command: start
-    environment:
-      KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://db:5432/keycloak_db
-      KC_DB_USERNAME: ${POSTGRES_USER:-phsardigital}
-      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
-      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
-      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?KEYCLOAK_ADMIN_PASSWORD is required}
-      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL:?KEYCLOAK_PUBLIC_URL is required}
-      KC_HOSTNAME_STRICT: "true"
-      KC_HTTP_ENABLED: "true"
-      KC_PROXY_HEADERS: xforwarded
-      KC_HEALTH_ENABLED: "true"
-      KC_METRICS_ENABLED: "true"
-      JAVA_OPTS_APPEND: ${KEYCLOAK_JAVA_OPTS:--Xms512m -Xmx2048m}
-    ports:
-      - "${APP_BIND_ADDRESS:-127.0.0.1}:7777:8080"
-    volumes:
-      - keycloak-data:/opt/keycloak/data
-    depends_on:
-      db:
-        condition: service_healthy
-    networks:
-      - phsardigital
-    restart: unless-stopped
-
-  minio:
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
-    container_name: phsardigital-minio
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
-    ports:
-      - "${APP_BIND_ADDRESS:-127.0.0.1}:9000:9000"
-      - "${APP_BIND_ADDRESS:-127.0.0.1}:9001:9001"
-    volumes:
-      - minio-data:/data
-    networks:
-      - phsardigital
-    restart: unless-stopped
-
-  minio-init:
-    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-      MINIO_BUCKET: ${MINIO_BUCKET:-products}
-    entrypoint:
-      - /bin/sh
-      - -c
-      - |
-        until mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"; do sleep 2; done
-        mc mb --ignore-existing "local/$${MINIO_BUCKET}"
-        mc anonymous set download "local/$${MINIO_BUCKET}"
-    depends_on:
-      - minio
-    networks:
-      - phsardigital
-    restart: "no"
-
   api:
     image: ${APP_IMAGE:?APP_IMAGE is required}
     container_name: phsardigital-api
     environment:
       SERVER_PORT: 8999
-      DB_URL: jdbc:postgresql://db:5432/phsardigital_db
+      DB_URL: ${DB_URL:-jdbc:postgresql://phsardigital-db:5432/phsardigital_db}
       DB_USERNAME: ${POSTGRES_USER:-phsardigital}
-      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       JPA_DDL_AUTO: ${JPA_DDL_AUTO:-update}
       JWT_ISSUER_URI: ${KEYCLOAK_ISSUER_URI:?KEYCLOAK_ISSUER_URI is required}
-      JWT_JWK_SET_URI: http://keycloak:8080/realms/${KEYCLOAK_REALM:-phsardigital}/protocol/openid-connect/certs
-      KEYCLOAK_SERVER_URL: http://keycloak:8080
+      JWT_JWK_SET_URI: ${KEYCLOAK_JWK_SET_URI:-http://phsardigital-kc:8080/realms/phsardigital/protocol/openid-connect/certs}
+      KEYCLOAK_SERVER_URL: ${KEYCLOAK_INTERNAL_URL:-http://phsardigital-kc:8080}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-phsardigital}
       KEYCLOAK_TARGET_REALM: ${KEYCLOAK_REALM:-phsardigital}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-phsar_digital_client}
       KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:?KEYCLOAK_CLIENT_SECRET is required}
-      MINIO_URL: http://minio:9000
+      MINIO_URL: ${MINIO_INTERNAL_URL:-http://phsardigital-minio:9000}
       MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:?MINIO_PUBLIC_URL is required}
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-admin}
-      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
       MINIO_BUCKET: ${MINIO_BUCKET:-products}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS is required}
       JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:--XX:MaxRAMPercentage=75.0 -Djava.security.egd=file:/dev/urandom}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-8999}:8999"
-    depends_on:
-      db:
-        condition: service_healthy
-      keycloak:
-        condition: service_started
-      minio-init:
-        condition: service_completed_successfully
     networks:
-      - phsardigital
+      - existing-infrastructure
     restart: unless-stopped
 
-volumes:
-  postgres-data:
-  keycloak-data:
-  minio-data:
-
 networks:
-  phsardigital:
+  existing-infrastructure:
     external: true
+    name: ${DOCKER_NETWORK:-phsardigital}

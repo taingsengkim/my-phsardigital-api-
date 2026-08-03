@@ -33,15 +33,16 @@ The workflow in `.github/workflows/ci-cd.yml` performs three stages:
 
 The deployment target is expected to be an Ubuntu/Linux host with Docker Engine,
 Docker Compose v2.20 or newer, and an SSH user allowed to run Docker commands.
+The production Compose file deploys only the Spring API; it reuses the existing
+PostgreSQL, Keycloak, MinIO, and Nginx Proxy Manager containers.
 
 ### 1. Prepare the Docker host
 
-Create the deployment directory once and give the SSH deploy user access. For a
-user named `deploy`:
+Create a separate deployment directory for the API:
 
 ```bash
-sudo install -d -m 755 -o deploy -g deploy /opt/phsardigital
-sudo usermod -aG docker deploy
+mkdir -p /home/ubuntu/istad/phsardigital
+sudo usermod -aG docker ubuntu
 ```
 
 Sign out and back in after changing Docker group membership, then verify
@@ -55,9 +56,9 @@ environment variables:
 | Variable | Example |
 | --- | --- |
 | `DEPLOY_HOST` | `51.79.146.203` (optional; currently the workflow default) |
-| `DEPLOY_USER` | `deploy` |
+| `DEPLOY_USER` | `ubuntu` (optional; currently the workflow default) |
 | `DEPLOY_PORT` | `22` |
-| `DEPLOY_PATH` | `/opt/phsardigital` |
+| `DEPLOY_PATH` | `/home/ubuntu/istad/phsardigital` (optional; currently the workflow default) |
 | `PRODUCTION_URL` | `https://api.example.com` |
 
 Add these environment secrets:
@@ -77,7 +78,7 @@ The first deployment uploads `.env.example` to `DEPLOY_PATH` and stops safely if
 `.env` is missing. On the server:
 
 ```bash
-cd /opt/phsardigital
+cd /home/ubuntu/istad/phsardigital
 cp .env.example .env
 chmod 600 .env
 ```
@@ -85,14 +86,13 @@ chmod 600 .env
 Replace every placeholder in `.env`. Keep this file only on the server; it is
 ignored by Git and is never copied back into GitHub Actions.
 
-The default ports bind to `127.0.0.1`. Configure Nginx Proxy Manager or another
-reverse proxy on the `phsardigital` Docker network for the API, Keycloak, and
-MinIO public URLs. Set the three URLs and `CORS_ALLOWED_ORIGINS` in `.env` to
-their real HTTPS addresses.
+Use the same PostgreSQL, Keycloak client, and MinIO credentials as the existing
+containers. Do not paste these values into GitHub or commit `.env`.
 
-For a new Keycloak volume, create the `phsardigital` realm and the client named
-by `KEYCLOAK_CLIENT_ID`, then put that client's secret in
-`KEYCLOAK_CLIENT_SECRET`. Existing Keycloak data is retained in a named volume.
+The API joins `DOCKER_NETWORK`, which defaults to `phsardigital`. Nginx Proxy
+Manager can then forward to `phsardigital-api:8999`. If an existing dependency
+is not attached to that network, either attach it or use its published host port,
+for example `MINIO_INTERNAL_URL=http://host.docker.internal:9000`.
 
 ### 4. Deploy
 
