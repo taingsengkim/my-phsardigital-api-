@@ -16,7 +16,6 @@ public class AuthUtils {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,"You have been forbidden");
         }
         JwtAuthenticationToken jwtAuthenticationToken = (JwtAuthenticationToken) auth;
-        IO.println("TEST: " + jwtAuthenticationToken);
         return jwtAuthenticationToken.getToken().getSubject();
     }
     public static String extractJwt(){
