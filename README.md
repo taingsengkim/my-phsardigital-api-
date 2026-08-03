@@ -54,7 +54,7 @@ environment variables:
 
 | Variable | Example |
 | --- | --- |
-| `DEPLOY_HOST` | `api.example.com` |
+| `DEPLOY_HOST` | `51.79.146.203` (optional; currently the workflow default) |
 | `DEPLOY_USER` | `deploy` |
 | `DEPLOY_PORT` | `22` |
 | `DEPLOY_PATH` | `/opt/phsardigital` |

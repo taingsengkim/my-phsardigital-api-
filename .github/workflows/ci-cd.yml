@@ -53,7 +53,9 @@ jobs:
           cache: gradle
 
       - name: Run tests
-        run: ./gradlew test --no-daemon
+        run: |
+          chmod +x ./gradlew
+          ./gradlew test --no-daemon
 
   publish:
     name: Build and publish image
@@ -119,11 +121,11 @@ jobs:
       cancel-in-progress: false
     env:
       APP_IMAGE: ${{ needs.publish.outputs.image }}
-      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST || '51.79.146.203' }}
       DEPLOY_USER: ${{ vars.DEPLOY_USER }}
       DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
       DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/phsardigital' }}
-      SSH_TARGET: ${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST }}
+      SSH_TARGET: ${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST || '51.79.146.203' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
