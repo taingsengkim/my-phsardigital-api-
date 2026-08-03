@@ -122,10 +122,10 @@ jobs:
     env:
       APP_IMAGE: ${{ needs.publish.outputs.image }}
       DEPLOY_HOST: ${{ vars.DEPLOY_HOST || '51.79.146.203' }}
-      DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER || 'ubuntu' }}
       DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
-      DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/phsardigital' }}
-      SSH_TARGET: ${{ vars.DEPLOY_USER }}@${{ vars.DEPLOY_HOST || '51.79.146.203' }}
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/home/ubuntu/istad/phsardigital' }}
+      SSH_TARGET: ${{ vars.DEPLOY_USER || 'ubuntu' }}@${{ vars.DEPLOY_HOST || '51.79.146.203' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -158,7 +158,7 @@ jobs:
         shell: bash
         run: |
           tar -C phsardigital-docker -czf deployment.tar.gz \
-            docker-compose.prod.yml init-scripts .env.example
+            docker-compose.prod.yml .env.example
           ssh -i "$HOME/.ssh/id_deploy" -p "$DEPLOY_PORT" "$SSH_TARGET" \
             "install -d -m 755 '$DEPLOY_PATH'"
           scp -i "$HOME/.ssh/id_deploy" -P "$DEPLOY_PORT" deployment.tar.gz \
@@ -187,7 +187,6 @@ jobs:
             exit 1
           fi
 
-          docker network inspect phsardigital >/dev/null 2>&1 || docker network create phsardigital
           export APP_IMAGE
           compose=(docker compose --env-file .env -f docker-compose.prod.yml)
           "${compose[@]}" config --quiet
