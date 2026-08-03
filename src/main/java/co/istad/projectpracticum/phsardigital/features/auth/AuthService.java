@@ -1,5 +1,6 @@
 package co.istad.projectpracticum.phsardigital.features.auth;
 
+import co.istad.projectpracticum.phsardigital.features.auth.dto.MeResponse;
 import co.istad.projectpracticum.phsardigital.features.auth.dto.RegisterRequest;
 import co.istad.projectpracticum.phsardigital.features.auth.dto.RegisterResponse;
 
@@ -12,4 +13,6 @@ public interface AuthService {
      *                        username, password, email, and other required information
      */
     RegisterResponse register(RegisterRequest registerRequest);
+
+
 }

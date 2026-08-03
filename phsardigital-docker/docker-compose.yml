@@ -1,93 +1,87 @@
-volumes:
-  phsardigital-db-vol:
-  phsardigital-kc-vol:
-  minio-data:
-networks:
-  phsardigital:
-    external: true
+name: phsardigital-local
+
 services:
   phsardigital-db:
     image: postgres:18.4
     container_name: phsardigital-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-phsardigital}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in phsardigital-docker/.env}
     ports:
       - "8888:5432"
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      - phsardigital-db-vol:/var/lib/postgresql/18/docker
-      - ./init-scripts:/docker-entrypoint-initdb.d
+      - postgres-data:/var/lib/postgresql
+      - ./init-scripts:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     networks:
       - phsardigital
     restart: unless-stopped
+
   phsardigital-kc:
     image: quay.io/keycloak/keycloak:26.6.4
     container_name: phsardigital-kc
+    command: start-dev
     environment:
-      # Database Configuration
       KC_DB: postgres
       KC_DB_URL: jdbc:postgresql://phsardigital-db:5432/keycloak_db
-      KC_DB_USERNAME: ${POSTGRES_USER}
+      KC_DB_USERNAME: ${POSTGRES_USER:-phsardigital}
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
-
-      # Admin User
-      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN}
-      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
-
-      # Production Settings
-      KC_HOSTNAME: ${KC_HOSTNAME}
-      #      KC_HOSTNAME_PORT: ${KC_HOSTNAME_PORT}
-      KC_HOSTNAME_STRICT: false               # set to true if HTTPS
-      KC_HOSTNAME_STRICT_HTTPS: false         # set to true if HTTPS
-      #      KC_HOSTNAME_URL: http://${KC_HOSTNAME}:${KC_HOSTNAME_PORT}
-      #      KC_HOSTNAME_ADMIN_URL: http://${KC_HOSTNAME}:${KC_HOSTNAME_PORT}
-      KC_PROXY: edge
-      KC_HTTP_ENABLED: true
-      #KC_HTTPS_PORT: 443
-      KC_PROXY_HEADERS: xforwarded
-      KC_CACHE: ispn
-      KC_LOG_LEVEL: INFO
-      KC_METRICS_ENABLED: true
-      KC_HEALTH_ENABLED: true
-      JAVA_OPTS_APPEND: "-Xms512m -Xmx2048m"
-    command: start               # use in production mode
-    #command: start-dev                        # use in development mode
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?Set KEYCLOAK_ADMIN_PASSWORD in phsardigital-docker/.env}
+      KC_HEALTH_ENABLED: "true"
+      JAVA_OPTS_APPEND: ${KEYCLOAK_JAVA_OPTS:--Xms256m -Xmx1024m}
     ports:
       - "7777:8080"
     volumes:
-      - phsardigital-kc-vol:/opt/keycloak/data
-      - ./keycloak/themes:/opt/keycloak/themes
-      - ./keycloak/conf:/opt/keycloak/conf
+      - keycloak-data:/opt/keycloak/data
     networks:
       - phsardigital
     depends_on:
-      - phsardigital-db
+      phsardigital-db:
+        condition: service_healthy
     restart: unless-stopped
+
   minio:
-    image: minio/minio
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: phsardigital-minio
     command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in phsardigital-docker/.env}
     ports:
       - "9000:9000"
       - "9001:9001"
-    environment:
-      MINIO_ROOT_USER: admin
-      MINIO_ROOT_PASSWORD: admin123
     volumes:
       - minio-data:/data
     networks:
-      - phsardigitalaaa
+      - phsardigital
     restart: unless-stopped
+
   nginx-proxy-manager:
-    image: 'jc21/nginx-proxy-manager:latest'
+    image: jc21/nginx-proxy-manager:latest
     container_name: nginx-proxy-manager
-    restart: unless-stopped
     ports:
-      - '80:80'
-      - '443:443'
-      - '81:81'
+      - "80:80"
+      - "443:443"
+      - "81:81"
     volumes:
       - npm-data:/data
       - npm-letsencrypt:/etc/letsencrypt
     networks:
       - phsardigital
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  keycloak-data:
+  minio-data:
+  npm-data:
+  npm-letsencrypt:
+
+networks:
+  phsardigital:
+    name: phsardigital
