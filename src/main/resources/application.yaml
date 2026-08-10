@@ -32,6 +32,13 @@ spring:
           issuer-uri: ${JWT_ISSUER_URI:http://localhost:7777/realms/phsardigital}
           jwk-set-uri: ${JWT_JWK_SET_URI:http://localhost:7777/realms/phsardigital/protocol/openid-connect/certs}
 
+springdoc:
+  swagger-ui:
+    # Keeps the pasted token across page reloads so it is not re-entered constantly.
+    persist-authorization: true
+    tags-sorter: alpha
+    operations-sorter: alpha
+
 server:
   port: ${SERVER_PORT:8999}
   shutdown: graceful
