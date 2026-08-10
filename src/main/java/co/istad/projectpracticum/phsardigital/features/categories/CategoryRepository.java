@@ -1,9 +1,8 @@
 package co.istad.projectpracticum.phsardigital.features.categories;
 
-import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Size;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -16,20 +15,21 @@ public interface CategoryRepository extends JpaRepository<Category, UUID> {
 
     Page<Category> findAllByIsDeletedFalse(Pageable pageable);
 
-    Optional<Category> findBySlug(String slug);
+    List<Category> findAllByIsDeletedFalse(Sort sort);
+
+    Optional<Category> findBySlugAndIsDeletedFalse(String slug);
+
+    Optional<Category> findByUuidAndIsDeletedFalse(UUID uuid);
+
+    List<Category> findAllByParentCategory_UuidAndIsDeletedFalse(UUID parentUuid, Sort sort);
 
     boolean existsByName(String name);
 
     boolean existsBySlug(String slug);
 
-    boolean existsByNameAndUuidNot(@Size(min = 2, max = 100, message = "Name must be between 2 and 100 characters") String name, UUID id);
+    boolean existsByNameAndUuidNot(String name, UUID id);
 
-    boolean existsBySlugAndUuidNot(@Size(max = 150, message = "Slug must not exceed 150 characters") @Pattern(
-                regexp = "^[a-z0-9]+(?:-[a-z0-9]+)*$",
-                message = "Slug must be lowercase alphanumeric with hyphens (e.g. my-category)"
-        ) String slug, UUID id);
-
-//    List<Category> findAllByIconFileObjectName(String iconFileObjectName);
+    boolean existsBySlugAndUuidNot(String slug, UUID id);
 
     List<Category> findAllByIconFile_ObjectName(String iconFileObjectName);
 }
