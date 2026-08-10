@@ -73,6 +73,24 @@ public class FileUploadServiceImpl implements FileUploadService {
     }
 
     @Override
+    public FileUpload requireOwnedFile(String objectName, String ownerId) {
+        FileUpload file = fileUploadRepository.findByObjectName(objectName)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Unknown file: " + objectName));
+
+        String uploader = file.getCreatedBy();
+        if (uploader == null) {
+            log.warn("File '{}' has no recorded uploader; allowing {} to claim it", objectName, ownerId);
+            return file;
+        }
+        if (!uploader.equals(ownerId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN, "That file was uploaded by somebody else.");
+        }
+        return file;
+    }
+
+    @Override
     @Transactional
     public void delete(String name) {
         FileUpload file = fileUploadRepository.findByObjectName(name)
