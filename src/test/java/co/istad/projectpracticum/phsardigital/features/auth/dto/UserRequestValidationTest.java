@@ -1,5 +1,6 @@
 package co.istad.projectpracticum.phsardigital.features.auth.dto;
 
+import co.istad.projectpracticum.phsardigital.features.user.Gender;
 import co.istad.projectpracticum.phsardigital.features.user.dto.UpdateUserProfileRequest;
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
@@ -57,12 +58,43 @@ class UserRequestValidationTest {
                 "   ",
                 "   ",
                 "abc",
-                "https://example.com/avatar.png",
-                LocalDate.now().plusDays(1)
+                LocalDate.now().plusDays(1),
+                Gender.FEMALE,
+                "Sells handmade baskets in Phnom Penh."
         );
 
         assertThat(validator.validate(request))
                 .extracting(violation -> violation.getPropertyPath().toString())
                 .contains("firstName", "lastName", "phone", "dateOfBirth");
+    }
+
+    @Test
+    void acceptsProfileUpdateWithOptionalFieldsOmitted() {
+        UpdateUserProfileRequest request = new UpdateUserProfileRequest(
+                "Sokha",
+                "Chan",
+                "012345678",
+                LocalDate.of(2000, 1, 1),
+                null,
+                null
+        );
+
+        assertThat(validator.validate(request)).isEmpty();
+    }
+
+    @Test
+    void rejectsOverlongBio() {
+        UpdateUserProfileRequest request = new UpdateUserProfileRequest(
+                null,
+                null,
+                null,
+                null,
+                Gender.PREFER_NOT_TO_SAY,
+                "a".repeat(501)
+        );
+
+        assertThat(validator.validate(request))
+                .extracting(violation -> violation.getPropertyPath().toString())
+                .contains("bio");
     }
 }

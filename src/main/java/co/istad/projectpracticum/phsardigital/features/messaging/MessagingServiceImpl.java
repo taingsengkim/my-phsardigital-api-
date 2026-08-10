@@ -1,6 +1,7 @@
 package co.istad.projectpracticum.phsardigital.features.messaging;
 
 import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
+import co.istad.projectpracticum.phsardigital.features.file.FileUploadService;
 import co.istad.projectpracticum.phsardigital.features.messaging.dto.*;
 import co.istad.projectpracticum.phsardigital.features.user.UserProfile;
 import co.istad.projectpracticum.phsardigital.features.user.UserProfileRepository;
@@ -27,6 +28,7 @@ public class MessagingServiceImpl implements MessagingService {
     private final MessageRepository messageRepository;
     private final UserProfileRepository userProfileRepository;
     private final SimpMessagingTemplate messagingTemplate;
+    private final FileUploadService fileUploadService;
     @Override
     @Transactional(readOnly = true)
     public List<ConversationResponse> getMyConversations() {
@@ -154,11 +156,18 @@ public class MessagingServiceImpl implements MessagingService {
                 c.getUuid(),
                 otherId,
                 other != null ? other.getFullName() : null,
-                other != null ? other.getAvatarUrl() : null,
+                avatarUrl(other),
                 lastBody,
                 lastAt,
                 unread
         );
+    }
+
+    private String avatarUrl(UserProfile profile) {
+        if (profile == null || profile.getAvatarFile() == null) {
+            return null;
+        }
+        return fileUploadService.getPreviewUrl(profile.getAvatarFile().getObjectName());
     }
 
     private MessageResponse toMessageResponse(Message m) {

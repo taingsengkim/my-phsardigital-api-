@@ -4,6 +4,9 @@ minio:
   access-key: ${MINIO_ACCESS_KEY:admin}
   secret-key: ${MINIO_SECRET_KEY:admin123}
   bucket: ${MINIO_BUCKET:products}
+  auto-create-bucket: ${MINIO_AUTO_CREATE_BUCKET:true}
+  max-image-size: ${MINIO_MAX_IMAGE_SIZE:5MB}
+  allowed-image-types: ${MINIO_ALLOWED_IMAGE_TYPES:image/jpeg,image/png,image/webp,image/gif}
 
 spring:
   application:
@@ -47,7 +50,7 @@ management:
 keycloak:
   server-url: ${KEYCLOAK_SERVER_URL:http://localhost:7777}
   realm: ${KEYCLOAK_REALM:phsardigital}
-  client-id: ${KEYCLOAK_CLIENT_ID:phsar_digital_client}
+  client-id: ${KEYCLOAK_CLIENT_ID:phsardigital-client}
   client-secret: ${KEYCLOAK_CLIENT_SECRET}
   target-realm: ${KEYCLOAK_TARGET_REALM:phsardigital}
 

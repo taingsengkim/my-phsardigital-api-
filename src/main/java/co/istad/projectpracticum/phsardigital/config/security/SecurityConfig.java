@@ -57,7 +57,10 @@ public class SecurityConfig {
                         .requestMatchers("/ws/**").permitAll()
                         .requestMatchers("/scalar/**").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
-                        .requestMatchers("/api/v1/files/**").permitAll()
+                        // Previews stay open so <img> tags work; writing and deleting do not.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/files/**").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/files/**").authenticated()
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/files/**").hasAnyRole("SELLER", "ADMIN")
                         .anyRequest().authenticated());
 
         http.sessionManagement(state ->

@@ -68,8 +68,12 @@ public class AuthServiceImpl implements AuthService{
             UserProfile userProfile = new UserProfile();
             userProfile.setId(createdUserId);
             userProfile.setEmail(userRepresentation.getEmail());
+            userProfile.setUsername(userRepresentation.getUsername());
             userProfile.setPhone(request.phoneNumber());
-            userProfile.setFullName(fullName(userRepresentation));
+            userProfile.setFirstName(userRepresentation.getFirstName());
+            userProfile.setLastName(userRepresentation.getLastName());
+            userProfile.refreshFullName();
+            userProfile.setEmailVerified(false);
             userProfile.setStatus(UserStatus.ACTIVE);
             userProfileRepository.saveAndFlush(userProfile);
         } catch (Exception registrationFailure) {
@@ -135,9 +139,5 @@ public class AuthServiceImpl implements AuthService{
         } catch (Exception cleanupFailure) {
             log.error("Could not remove partially registered Keycloak user {}", userId, cleanupFailure);
         }
-    }
-
-    private String fullName(UserRepresentation user) {
-        return (user.getFirstName() + " " + user.getLastName()).trim();
     }
 }

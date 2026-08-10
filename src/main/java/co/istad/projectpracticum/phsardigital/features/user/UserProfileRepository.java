@@ -5,6 +5,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
+
 @Repository
 public interface UserProfileRepository extends JpaRepository<UserProfile, String> {
 
@@ -13,4 +15,6 @@ public interface UserProfileRepository extends JpaRepository<UserProfile, String
             String fullName,
             Pageable pageable
     );
+
+    List<UserProfile> findAllByAvatarFile_ObjectName(String objectName);
 }
