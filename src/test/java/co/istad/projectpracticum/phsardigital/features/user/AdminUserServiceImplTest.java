@@ -83,7 +83,11 @@ class AdminUserServiceImplTest {
     private UserProfile profile(String id, String email) {
         UserProfile profile = new UserProfile(id);
         profile.setEmail(email);
-        profile.setFullName("Sokha Chan");
+        profile.setUsername(email.substring(0, email.indexOf('@')));
+        profile.setFirstName("Sokha");
+        profile.setLastName("Chan");
+        profile.refreshFullName();
+        profile.setEmailVerified(true);
         profile.setStatus(UserStatus.ACTIVE);
         profile.setCreatedAt(LocalDateTime.now());
         profile.setLastModifiedAt(LocalDateTime.now());
@@ -93,10 +97,14 @@ class AdminUserServiceImplTest {
     private AdminUserResponse response(UserProfile profile) {
         return new AdminUserResponse(
                 profile.getId(),
+                profile.getUsername(),
                 profile.getEmail(),
+                profile.getEmailVerified(),
                 profile.getFullName(),
                 profile.getPhone(),
-                profile.getAvatarUrl(),
+                // The mapper resolves the avatar URL from MinIO; it is mocked here.
+                null,
+                profile.getGender(),
                 profile.getStatus(),
                 profile.getDateOfBirth(),
                 profile.getCreatedAt(),
