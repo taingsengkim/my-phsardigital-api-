@@ -11,6 +11,12 @@ public interface SellerApplicationRepository extends JpaRepository<SellerApplica
 
     Optional<SellerApplication> findByApplicantIdAndStatus(String applicantId, ApplicationStatus status);
 
+    /**
+     * The applicant's newest application whatever its status, so a rejected one —
+     * and its rejection note — stays readable instead of vanishing behind a 404.
+     */
+    Optional<SellerApplication> findFirstByApplicantIdOrderByCreatedAtDesc(String applicantId);
+
     boolean existsByApplicantIdAndStatus(String applicantId, ApplicationStatus status);
 
     Page<SellerApplication> findByStatus(ApplicationStatus status, Pageable pageable);

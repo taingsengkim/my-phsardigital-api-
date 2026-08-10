@@ -34,6 +34,23 @@ public class SellerProfile extends BasedEntity {
     @Column(length = 1000)
     private String biography;
 
+    /**
+     * Shop details. These are declared on both {@code SellerProfileResponse} and
+     * {@code SellerProfileUpdateRequest}, so without them the mapper silently
+     * dropped every write and always answered null.
+     */
+    @Column(columnDefinition = "TEXT")
+    private String description;
+
+    @Column(columnDefinition = "TEXT")
+    private String address;
+
+    @Column(length = 100)
+    private String city;
+
+    @Column(length = 100)
+    private String province;
+
     @ElementCollection
     @CollectionTable(
             name = "seller_social_links",

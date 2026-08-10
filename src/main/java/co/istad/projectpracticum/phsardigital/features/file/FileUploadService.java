@@ -46,6 +46,22 @@ public interface FileUploadService {
     FileUploadResponse  getByName(String name);
 
     /**
+     * Resolves an object name supplied by a client, confirming the file exists and
+     * that this caller uploaded it. Use before attaching a client-provided object
+     * name to an entity, otherwise a caller can claim somebody else's upload.
+     *
+     * <p>Files stored before uploader auditing existed carry no owner and are
+     * accepted with a warning, so historical rows keep working.
+     *
+     * @param objectName the storage object name (key) the caller claims
+     * @param ownerId    the Keycloak subject that must own the file
+     * @return the owned {@link FileUpload}
+     * @throws org.springframework.web.server.ResponseStatusException 404 when the
+     *         object is unknown, 403 when it belongs to somebody else
+     */
+    FileUpload requireOwnedFile(String objectName, String ownerId);
+
+    /**
      * Deletes a file from object storage and removes its associated metadata.
      *
      * @param name the storage object name (key) of the file to delete
