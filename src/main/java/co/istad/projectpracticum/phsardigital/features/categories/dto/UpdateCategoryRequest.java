@@ -4,6 +4,12 @@ import jakarta.validation.constraints.*;
 
 import java.util.UUID;
 
+/**
+ * Partial update: only non-null fields are applied. {@code level} is absent
+ * because it follows the parent — reparenting recalculates it for the whole
+ * subtree. Use {@code DELETE /{uuid}/icon} to clear an icon, since a null
+ * {@code iconFileId} here means "leave it alone".
+ */
 public record UpdateCategoryRequest(
         @Size(min = 2, max = 100, message = "Name must be between 2 and 100 characters")
         String name,
@@ -16,13 +22,15 @@ public record UpdateCategoryRequest(
         String slug,
 
         UUID iconFileId,
+
         @Size(max = 1000, message = "Description must not exceed 1000 characters")
         String description,
 
-        @Min(value = 0, message = "Level must be 0 or greater")
-        @Max(value = 10, message = "Level must not exceed 10")
-        Integer level,
+        @Min(value = 0, message = "Sort order must be 0 or greater")
+        Integer sortOrder,
+
         Boolean isActive,
+
         UUID parentUuid
 ){
 }

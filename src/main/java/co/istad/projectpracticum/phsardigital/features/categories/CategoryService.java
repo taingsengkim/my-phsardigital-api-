@@ -54,6 +54,15 @@ public interface CategoryService {
     CategoryResponse updateCategory(UUID id, UpdateCategoryRequest updateCategoryRequest);
 
     /**
+     * Detaches the category's icon without deleting the underlying file, which
+     * may still back other categories.
+     *
+     * @param uuid the UUID of the category whose icon should be cleared
+     * @return the updated category as a {@link CategoryResponse}
+     */
+    CategoryResponse removeIcon(UUID uuid);
+
+    /**
      * Performs a soft delete on the category identified by its slug,
      * marking it as inactive/deleted without removing it from the database.
      *
