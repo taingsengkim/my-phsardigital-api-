@@ -38,6 +38,13 @@ public class MinioProps {
      */
     private boolean autoCreateBucket = true;
 
+    /**
+     * Grant anonymous read on every object in the bucket at startup. The preview
+     * URLs handed to the browser are unsigned, so they only resolve while this is
+     * enabled. Turn it off only alongside a move to presigned URLs.
+     */
+    private boolean publicRead = true;
+
     private DataSize maxImageSize = DataSize.ofMegabytes(5);
 
     private List<String> allowedImageTypes = List.of(

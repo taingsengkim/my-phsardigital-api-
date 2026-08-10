@@ -5,6 +5,7 @@ minio:
   secret-key: ${MINIO_SECRET_KEY:admin123}
   bucket: ${MINIO_BUCKET:products}
   auto-create-bucket: ${MINIO_AUTO_CREATE_BUCKET:true}
+  public-read: ${MINIO_PUBLIC_READ:true}
   max-image-size: ${MINIO_MAX_IMAGE_SIZE:5MB}
   allowed-image-types: ${MINIO_ALLOWED_IMAGE_TYPES:image/jpeg,image/png,image/webp,image/gif}
 
