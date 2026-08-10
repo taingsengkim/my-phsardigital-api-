@@ -1,15 +1,14 @@
 package co.istad.projectpracticum.phsardigital.features.file;
 
+import co.istad.projectpracticum.phsardigital.config.config.MinioProps;
 import co.istad.projectpracticum.phsardigital.core.event.FileDeletedEvent;
 import co.istad.projectpracticum.phsardigital.features.file.dto.FileUploadResponse;
-import io.minio.GetPresignedObjectUrlArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.RemoveObjectArgs;
-import io.minio.http.Method;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -18,63 +17,48 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.net.URLConnection;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
-import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class FileUploadServiceImpl implements FileUploadService {
     private final MinioClient minioClient;
     private final FileUploadRepository fileUploadRepository;
-    private final FileUploadMapper fileUploadMapper;
     private final ApplicationEventPublisher eventPublisher;
+    private final MinioProps minioProps;
 
-    @Value("${minio.bucket}")
-    private String bucket;
-
-    @Value("${minio.public-url}")
-    private String minioUrl;
-
-    /**
-     * @implNote If the bucket is private, this presigned URL grants temporary read access.
-     */
     @Override
     public String getPreviewUrl(String objectName) {
-        String base = minioUrl.endsWith("/") ? minioUrl : minioUrl + "/";
-        return base + bucket + "/" + objectName;
+        return minioProps.publicBaseUrl() + minioProps.getBucket() + "/" + objectName;
     }
-    private String resolveContentType(MultipartFile file) {
-        String ct = file.getContentType();
-        if (ct != null && !ct.isBlank()
-                && !ct.equals("application/octet-stream")
-                && !ct.equals("application/json")) {
-            return ct;
-        }
-        String guessed = URLConnection.guessContentTypeFromName(file.getOriginalFilename());
-        return guessed != null ? guessed : "application/octet-stream";
-    }
+
     @Override
     public FileUploadResponse upload(MultipartFile file) {
-        try {
-            String objectName = buildObjectName(file.getOriginalFilename());
-            minioClient.putObject(
-                    PutObjectArgs.builder()
-                            .bucket(bucket)
-                            .object(objectName)
-                            .stream(file.getInputStream(), file.getSize(), -1)
-                            .contentType(resolveContentType(file))
-                            .build()
+        FileUpload stored = store(file, null, resolveContentType(file));
+        return new FileUploadResponse(stored.getObjectName(), getPreviewUrl(stored.getObjectName()));
+    }
+
+    @Override
+    public FileUpload uploadImage(MultipartFile file, String folder) {
+        String contentType = resolveContentType(file);
+        long maxBytes = minioProps.getMaxImageSize().toBytes();
+
+        if (file.getSize() > maxBytes) {
+            throw new ResponseStatusException(
+                    HttpStatus.PAYLOAD_TOO_LARGE,
+                    "Image must not exceed " + minioProps.getMaxImageSize().toMegabytes() + " MB."
             );
-            FileUpload entity = new FileUpload();
-            entity.setObjectName(objectName);
-            entity.setOriginalName(file.getOriginalFilename());
-            entity.setContentType(file.getContentType());
-            entity.setSize(file.getSize());
-            fileUploadRepository.save(entity);
-            return new FileUploadResponse(objectName, getPreviewUrl(objectName));
-        } catch (Exception e) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Upload failed : " + e.getMessage());
         }
+        if (!minioProps.getAllowedImageTypes().contains(contentType.toLowerCase(Locale.ROOT))) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+                    "Unsupported image type. Allowed types: "
+                            + String.join(", ", minioProps.getAllowedImageTypes())
+            );
+        }
+        return store(file, folder, contentType);
     }
 
     @Override
@@ -94,12 +78,7 @@ public class FileUploadServiceImpl implements FileUploadService {
         FileUpload file = fileUploadRepository.findByObjectName(name)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "File not found"));
         try {
-            minioClient.removeObject(
-                    RemoveObjectArgs.builder()
-                            .bucket(bucket)
-                            .object(file.getObjectName())
-                            .build()
-            );
+            removeObject(file.getObjectName());
         } catch (Exception e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to remove from MinIO: " + e.getMessage());
         }
@@ -109,18 +88,91 @@ public class FileUploadServiceImpl implements FileUploadService {
     }
 
     @Override
+    @Transactional
+    public void deleteQuietly(FileUpload file) {
+        if (file == null) {
+            return;
+        }
+        try {
+            removeObject(file.getObjectName());
+        } catch (Exception exception) {
+            // The row is still dropped: a leftover object is cheaper than a dangling reference.
+            log.warn("Could not remove object '{}' from MinIO", file.getObjectName(), exception);
+        }
+        try {
+            eventPublisher.publishEvent(new FileDeletedEvent(file.getId(), file.getObjectName()));
+            fileUploadRepository.delete(file);
+        } catch (RuntimeException exception) {
+            log.warn("Could not delete file metadata for '{}'", file.getObjectName(), exception);
+        }
+    }
+
+    @Override
     public List<FileUploadResponse> uploadMultiple(List<MultipartFile> files) {
         return files.stream().map(this::upload).toList();
     }
 
     /**
-     * Builds a safe object name: random UUID + sanitized original filename.
-     * Strips spaces and special characters that break presigned URLs in the browser.
+     * Streams the file into the bucket and records its metadata. The content type
+     * written to storage and the one written to the database are always the same
+     * value, so a preview URL never contradicts the stored metadata.
      */
-    private String buildObjectName(String originalFilename) {
+    private FileUpload store(MultipartFile file, String folder, String contentType) {
+        if (file == null || file.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File must not be empty.");
+        }
+        String objectName = buildObjectName(folder, file.getOriginalFilename());
+        try {
+            minioClient.putObject(
+                    PutObjectArgs.builder()
+                            .bucket(minioProps.getBucket())
+                            .object(objectName)
+                            .stream(file.getInputStream(), file.getSize(), -1)
+                            .contentType(contentType)
+                            .build()
+            );
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Upload failed : " + e.getMessage());
+        }
+
+        FileUpload entity = new FileUpload();
+        entity.setObjectName(objectName);
+        entity.setOriginalName(file.getOriginalFilename());
+        entity.setContentType(contentType);
+        entity.setSize(file.getSize());
+        return fileUploadRepository.save(entity);
+    }
+
+    private void removeObject(String objectName) throws Exception {
+        minioClient.removeObject(
+                RemoveObjectArgs.builder()
+                        .bucket(minioProps.getBucket())
+                        .object(objectName)
+                        .build()
+        );
+    }
+
+    private String resolveContentType(MultipartFile file) {
+        String ct = file.getContentType();
+        if (ct != null && !ct.isBlank()
+                && !ct.equals("application/octet-stream")
+                && !ct.equals("application/json")) {
+            return ct;
+        }
+        String guessed = URLConnection.guessContentTypeFromName(file.getOriginalFilename());
+        return guessed != null ? guessed : "application/octet-stream";
+    }
+
+    /**
+     * Builds a safe object name: optional folder prefix + random UUID + sanitized
+     * original filename. Strips spaces and special characters that break URLs in
+     * the browser.
+     */
+    private String buildObjectName(String folder, String originalFilename) {
         String safeName = (originalFilename == null || originalFilename.isBlank())
                 ? "file"
                 : originalFilename.replaceAll("[^a-zA-Z0-9._-]", "_");
-        return UUID.randomUUID() + "-" + safeName;
+        String key = UUID.randomUUID() + "-" + safeName;
+        return (folder == null || folder.isBlank()) ? key : folder.strip() + "/" + key;
     }
 }

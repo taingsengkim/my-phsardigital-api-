@@ -2,6 +2,8 @@ package co.istad.projectpracticum.phsardigital.features.user;
 
 import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
 import co.istad.projectpracticum.phsardigital.config.security.KeycloakAdminProps;
+import co.istad.projectpracticum.phsardigital.features.file.FileUpload;
+import co.istad.projectpracticum.phsardigital.features.file.FileUploadService;
 import co.istad.projectpracticum.phsardigital.features.user.dto.UpdateUserProfileRequest;
 import co.istad.projectpracticum.phsardigital.features.user.dto.UserProfileResponse;
 import lombok.RequiredArgsConstructor;
@@ -10,33 +12,36 @@ import org.keycloak.admin.client.Keycloak;
 import org.keycloak.admin.client.resource.UserResource;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class UserProfileServiceImpl implements UserProfileService {
+
+    private static final String AVATAR_FOLDER = "avatars";
+
     private final UserProfileRepository userProfileRepository;
     private final KeycloakAdminProps props;
     private final Keycloak keycloak;
     private final UserProfileMapper profileMapper;
+    private final FileUploadService fileUploadService;
+
     @Override
+    @Transactional
     public UserProfileResponse getMe() {
-        String userId = AuthUtils.extractUserId();
-        UserProfile userProfile = userProfileRepository.findById(userId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Profile not found."));
-        return profileMapper.toResponse(userProfile);
+        return profileMapper.toResponse(currentProfile());
     }
 
     @Override
     @Transactional
     public UserProfileResponse updateMe(UpdateUserProfileRequest request) {
         String userId = AuthUtils.extractUserId();
-        UserProfile profile = userProfileRepository.findById(userId)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Profile not found."));
+        UserProfile profile = currentProfile();
 
         UserResource userResource = keycloak.realm(props.getTargetRealm())
                 .users().get(userId);
@@ -78,16 +83,21 @@ public class UserProfileServiceImpl implements UserProfileService {
 
         try {
             if (identityChanged) {
-                profile.setFullName(fullName(keycloakUser));
+                profile.setFirstName(keycloakUser.getFirstName());
+                profile.setLastName(keycloakUser.getLastName());
+                profile.refreshFullName();
             }
             if (request.phone() != null) {
                 profile.setPhone(request.phone());
             }
-            if (request.avatarUrl() != null) {
-                profile.setAvatarUrl(request.avatarUrl().trim());
-            }
             if (request.dateOfBirth() != null) {
                 profile.setDateOfBirth(request.dateOfBirth());
+            }
+            if (request.gender() != null) {
+                profile.setGender(request.gender());
+            }
+            if (request.bio() != null) {
+                profile.setBio(request.bio().trim());
             }
 
             UserProfile saved = userProfileRepository.saveAndFlush(profile);
@@ -98,6 +108,116 @@ public class UserProfileServiceImpl implements UserProfileService {
             }
             throw databaseFailure;
         }
+    }
+
+    @Override
+    @Transactional
+    public UserProfileResponse uploadMyAvatar(MultipartFile file) {
+        UserProfile profile = currentProfile();
+        FileUpload previousAvatar = profile.getAvatarFile();
+
+        profile.setAvatarFile(fileUploadService.uploadImage(file, AVATAR_FOLDER));
+        UserProfile saved = userProfileRepository.saveAndFlush(profile);
+
+        // Flushed first, so the old row is no longer referenced when it is removed.
+        if (previousAvatar != null) {
+            fileUploadService.deleteQuietly(previousAvatar);
+        }
+        return profileMapper.toResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public UserProfileResponse deleteMyAvatar() {
+        UserProfile profile = currentProfile();
+        FileUpload previousAvatar = profile.getAvatarFile();
+        if (previousAvatar == null) {
+            return profileMapper.toResponse(profile);
+        }
+
+        profile.setAvatarFile(null);
+        UserProfile saved = userProfileRepository.saveAndFlush(profile);
+        fileUploadService.deleteQuietly(previousAvatar);
+        return profileMapper.toResponse(saved);
+    }
+
+    /**
+     * Loads the caller's profile, creating it from the access token when it is
+     * missing. Accounts created straight in Keycloak — imports, social login, the
+     * admin console — never pass through registration, and used to be locked out
+     * of every profile endpoint with a permanent 404.
+     */
+    private UserProfile currentProfile() {
+        Jwt token = AuthUtils.extractToken();
+        String userId = token.getSubject();
+
+        UserProfile existing = userProfileRepository.findById(userId).orElse(null);
+        UserProfile profile = existing != null ? existing : provisionFromToken(token);
+
+        boolean changed = syncFromToken(profile, token);
+        if (existing == null || changed) {
+            profile = userProfileRepository.saveAndFlush(profile);
+        }
+        return profile;
+    }
+
+    private UserProfile provisionFromToken(Jwt token) {
+        String email = token.getClaimAsString("email");
+        if (email == null || email.isBlank()) {
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    "Profile not found and the access token carries no email to create one."
+            );
+        }
+        UserProfile profile = new UserProfile(token.getSubject());
+        profile.setEmail(email);
+        profile.setStatus(UserStatus.ACTIVE);
+        log.info("Provisioned a missing user profile for {}", token.getSubject());
+        return profile;
+    }
+
+    /**
+     * Copies identity data the token already carries onto the profile.
+     *
+     * @return true when at least one field changed and the row needs saving.
+     */
+    private boolean syncFromToken(UserProfile profile, Jwt token) {
+        boolean changed = false;
+
+        String email = token.getClaimAsString("email");
+        if (email != null && !email.equals(profile.getEmail())) {
+            profile.setEmail(email);
+            changed = true;
+        }
+
+        String username = token.getClaimAsString("preferred_username");
+        if (username != null && !username.equals(profile.getUsername())) {
+            profile.setUsername(username);
+            changed = true;
+        }
+
+        String firstName = token.getClaimAsString("given_name");
+        if (firstName != null && !firstName.equals(profile.getFirstName())) {
+            profile.setFirstName(firstName);
+            changed = true;
+        }
+
+        String lastName = token.getClaimAsString("family_name");
+        if (lastName != null && !lastName.equals(profile.getLastName())) {
+            profile.setLastName(lastName);
+            changed = true;
+        }
+
+        Boolean emailVerified = token.getClaim("email_verified");
+        if (emailVerified != null && !emailVerified.equals(profile.getEmailVerified())) {
+            profile.setEmailVerified(emailVerified);
+            changed = true;
+        }
+
+        if (changed) {
+            profile.refreshFullName();
+        }
+        return changed;
     }
 
     private void restoreKeycloakName(
@@ -115,11 +235,5 @@ public class UserProfileServiceImpl implements UserProfileService {
             log.error("Could not restore Keycloak identity after profile update failure for {}",
                     userId, compensationFailure);
         }
-    }
-
-    private String fullName(UserRepresentation user) {
-        String firstName = user.getFirstName() == null ? "" : user.getFirstName();
-        String lastName = user.getLastName() == null ? "" : user.getLastName();
-        return (firstName + " " + lastName).trim();
     }
 }

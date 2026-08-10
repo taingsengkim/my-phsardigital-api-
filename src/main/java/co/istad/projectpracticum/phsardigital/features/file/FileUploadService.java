@@ -7,7 +7,7 @@ import java.util.List;
 
 /**
  * Service interface for managing file uploads and retrieval, backed by
- * MinIO object storage. Handles uploading files, resolving presigned
+ * MinIO object storage. Handles uploading files, resolving public
  * preview URLs, and deleting stored objects.
  */
 public interface FileUploadService {
@@ -20,11 +20,20 @@ public interface FileUploadService {
     FileUploadResponse upload(MultipartFile file);
 
     /**
-     * Resolves a presigned preview URL for the given object name, allowing
-     * temporary, direct access to the file in storage.
+     * Uploads an image after checking that it is a real, non-empty image within
+     * the configured size limit, and stores it under the given folder prefix.
+     *
+     * @param file   the multipart image to upload
+     * @param folder logical prefix inside the bucket, e.g. {@code "avatars"}
+     * @return the persisted {@link FileUpload}, ready to attach to an entity
+     */
+    FileUpload uploadImage(MultipartFile file, String folder);
+
+    /**
+     * Resolves the browser-facing URL for the given object name.
      *
      * @param objectName the storage object name (key) of the file
-     * @return a presigned URL that can be used to preview/access the file
+     * @return a URL that can be used to preview/access the file
      */
     String getPreviewUrl(String objectName);
 
@@ -42,6 +51,15 @@ public interface FileUploadService {
      * @param name the storage object name (key) of the file to delete
      */
     void delete(String name);
+
+    /**
+     * Best-effort cleanup used when a file is being replaced. Unlike
+     * {@link #delete(String)} it never throws, so a storage hiccup cannot roll
+     * back the business change that made the old file obsolete.
+     *
+     * @param file the file to remove; ignored when {@code null}
+     */
+    void deleteQuietly(FileUpload file);
 
     List<FileUploadResponse> uploadMultiple(List<MultipartFile> files);
 }
