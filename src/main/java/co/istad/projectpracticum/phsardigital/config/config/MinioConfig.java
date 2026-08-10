@@ -26,31 +26,40 @@ public class MinioConfig {
     }
 
     /**
-     * Creates the bucket on first boot and opens it for anonymous reads, so the
-     * plain object URLs handed to the browser resolve without a presigned token.
-     * A storage outage only logs here: it must not stop the API from starting.
+     * Creates the bucket when missing and re-applies the anonymous read policy on
+     * every boot, so the plain object URLs handed to the browser resolve without a
+     * presigned token. The policy is applied to pre-existing buckets too: a bucket
+     * created before this API ever ran would otherwise stay private and answer 403
+     * to every image request. A storage outage only logs here — it must not stop
+     * the API from starting.
      */
     @Bean
     public ApplicationRunner minioBucketInitializer(MinioClient minioClient) {
         return args -> {
-            if (!props.isAutoCreateBucket()) {
-                return;
-            }
             String bucket = props.getBucket();
             try {
                 boolean exists = minioClient.bucketExists(
                         BucketExistsArgs.builder().bucket(bucket).build());
-                if (exists) {
-                    return;
+
+                if (!exists) {
+                    if (!props.isAutoCreateBucket()) {
+                        log.warn("MinIO bucket '{}' is missing and auto-create is off. Uploads will fail.",
+                                bucket);
+                        return;
+                    }
+                    minioClient.makeBucket(MakeBucketArgs.builder().bucket(bucket).build());
+                    log.info("Created MinIO bucket '{}'", bucket);
                 }
-                minioClient.makeBucket(MakeBucketArgs.builder().bucket(bucket).build());
-                minioClient.setBucketPolicy(SetBucketPolicyArgs.builder()
-                        .bucket(bucket)
-                        .config(publicReadPolicy(bucket))
-                        .build());
-                log.info("Created MinIO bucket '{}' with public read access", bucket);
+
+                if (props.isPublicRead()) {
+                    minioClient.setBucketPolicy(SetBucketPolicyArgs.builder()
+                            .bucket(bucket)
+                            .config(publicReadPolicy(bucket))
+                            .build());
+                    log.info("Applied anonymous read policy to MinIO bucket '{}'", bucket);
+                }
             } catch (Exception exception) {
-                log.warn("Could not prepare MinIO bucket '{}'. Uploads will fail until it exists.",
+                log.warn("Could not prepare MinIO bucket '{}'. Image URLs may return 403.",
                         bucket, exception);
             }
         };
