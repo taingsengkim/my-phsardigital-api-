@@ -1,5 +1,6 @@
 package co.istad.projectpracticum.phsardigital.config.security;
 
+import co.istad.projectpracticum.phsardigital.core.exception.RestSecurityErrorHandler;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.beans.factory.annotation.Value;
@@ -25,10 +26,18 @@ public class SecurityConfig {
     private java.util.List<String> allowedOriginPatterns;
 
     @Bean
-    public SecurityFilterChain apiSecurity(HttpSecurity http) {
+    public SecurityFilterChain apiSecurity(HttpSecurity http, RestSecurityErrorHandler securityErrorHandler) {
         //Security Mechani
+        // Both the resource server and the chain itself are pointed at the same
+        // handler, otherwise a rejected token returns an empty body while every
+        // other failure returns the shared error shape.
         http.oauth2ResourceServer(oauth->
-                oauth.jwt(Customizer.withDefaults()));
+                oauth.jwt(Customizer.withDefaults())
+                        .authenticationEntryPoint(securityErrorHandler)
+                        .accessDeniedHandler(securityErrorHandler));
+        http.exceptionHandling(handling ->
+                handling.authenticationEntryPoint(securityErrorHandler)
+                        .accessDeniedHandler(securityErrorHandler));
         http.cors(cors -> cors.configurationSource(request -> {
             var config = new org.springframework.web.cors.CorsConfiguration();
             config.setAllowedOriginPatterns(allowedOriginPatterns);
