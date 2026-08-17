@@ -4,10 +4,14 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 public interface SellerApplicationRepository extends JpaRepository<SellerApplication, UUID> {
+
+    /** Backs the logo cleanup in {@code SellerProfileFileListener}. */
+    List<SellerApplication> findAllByLogoFile_ObjectName(String objectName);
 
     Optional<SellerApplication> findByApplicantIdAndStatus(String applicantId, ApplicationStatus status);
 

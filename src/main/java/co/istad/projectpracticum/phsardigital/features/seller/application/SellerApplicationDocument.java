@@ -21,8 +21,9 @@ public class SellerApplicationDocument {
     @JoinColumn(name = "application_uuid", nullable = false)
     private SellerApplication application;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "doc_type", nullable = false, length = 100)
-    private String docType;         // 'ID_CARD', 'BUSINESS_LICENSE', etc.
+    private SellerDocumentType docType;
 
     @Column(name = "object_name", nullable = false)
     private String objectName;

@@ -1,6 +1,8 @@
 package co.istad.projectpracticum.phsardigital.features.seller;
 
 import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
+import co.istad.projectpracticum.phsardigital.features.file.FileUpload;
+import co.istad.projectpracticum.phsardigital.features.file.FileUploadService;
 import co.istad.projectpracticum.phsardigital.features.listings.Listing;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingMapper;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingRepository;
@@ -24,6 +26,7 @@ public class SellerProfileServiceImpl implements SellerProfileService{
     private final ListingRepository listingRepository;
     private final ListingMapper listingMapper;
     private final SellerProfileMapper sellerProfileMapper;
+    private final FileUploadService fileUploadService;
 
     @Override
     public SellerProfileResponse getPublicProfile(String sellerId) {
@@ -65,7 +68,34 @@ public class SellerProfileServiceImpl implements SellerProfileService{
         // Partially update only fields that are not null in request
         sellerProfileMapper.updateFromRequest(request, profile);
 
-        SellerProfile updated = sellerProfileRepository.save(profile);
+        // Resolved before the write so a logo belonging to somebody else fails the
+        // whole request instead of half-applying the rest of the patch.
+        FileUpload replacedLogo = applyLogo(request.logoObjectName(), profile, userId);
+
+        SellerProfile updated = sellerProfileRepository.saveAndFlush(profile);
+
+        // Flushed first, so the old row is no longer referenced when it is removed.
+        if (replacedLogo != null) {
+            fileUploadService.deleteQuietly(replacedLogo);
+        }
         return sellerProfileMapper.toResponse(updated);
+    }
+
+    /**
+     * Points the profile at a new logo, if one was supplied.
+     *
+     * @return the logo that was displaced and should now be deleted, or null when
+     *         nothing changed
+     */
+    private FileUpload applyLogo(String logoObjectName, SellerProfile profile, String ownerId) {
+        if (logoObjectName == null || logoObjectName.isBlank()) {
+            return null;
+        }
+        FileUpload previous = profile.getLogoFile();
+        if (previous != null && logoObjectName.equals(previous.getObjectName())) {
+            return null;
+        }
+        profile.setLogoFile(fileUploadService.requireOwnedFile(logoObjectName, ownerId));
+        return previous;
     }
 }

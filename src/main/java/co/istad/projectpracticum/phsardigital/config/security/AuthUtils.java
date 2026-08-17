@@ -55,4 +55,22 @@ public class AuthUtils {
         Boolean value = extractToken().getClaim(name);
         return Boolean.TRUE.equals(value);
     }
+
+    /**
+     * Checks a realm role on the current caller without throwing when there is no
+     * caller, so it can be used to widen a permission rather than to demand one.
+     *
+     * @param role the bare role name, e.g. {@code "ADMIN"} — the {@code ROLE_}
+     *             prefix the JWT converter adds is applied here
+     * @return true when the caller is authenticated and holds the role
+     */
+    public static boolean hasRole(String role){
+        Authentication auth = getAuth();
+        if (auth == null || auth instanceof AnonymousAuthenticationToken) {
+            return false;
+        }
+        String authority = "ROLE_" + role;
+        return auth.getAuthorities().stream()
+                .anyMatch(granted -> authority.equals(granted.getAuthority()));
+    }
 }

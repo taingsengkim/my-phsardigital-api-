@@ -5,7 +5,6 @@ import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
 import co.istad.projectpracticum.phsardigital.features.categories.Category;
 import co.istad.projectpracticum.phsardigital.features.categories.CategoryRepository;
 import co.istad.projectpracticum.phsardigital.features.file.FileUpload;
-import co.istad.projectpracticum.phsardigital.features.file.FileUploadRepository;
 import co.istad.projectpracticum.phsardigital.features.file.FileUploadService;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingCreateRequest;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingResponse;
@@ -14,10 +13,12 @@ import co.istad.projectpracticum.phsardigital.features.listings.listing_attribut
 import co.istad.projectpracticum.phsardigital.features.listings.listing_images.ListingImage;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_images.dto.AddListingImageRequest;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_images.dto.ListingImageRequest;
+import co.istad.projectpracticum.phsardigital.features.seller.SellerAccessGuard;
 import co.istad.projectpracticum.phsardigital.features.seller.SellerProfile;
-import co.istad.projectpracticum.phsardigital.features.seller.SellerRepository;
+import co.istad.projectpracticum.phsardigital.features.subscription.SubscriptionService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -33,13 +34,14 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ListingServiceImpl implements ListingService{
     private final ListingRepository listingRepository;
     private final ListingMapper listingMapper;
     private final CategoryRepository categoryRepository;
-    private final SellerRepository sellerRepository;
+    private final SellerAccessGuard sellerAccessGuard;
+    private final SubscriptionService subscriptionService;
     private final FileUploadService fileUploadService;
-    private final FileUploadRepository fileUploadRepository;
 
     @Override
     public Page<ListingResponse> getAllListingsByStatus(String status, Integer pageNumber, Integer pageSize) {
@@ -79,15 +81,17 @@ public class ListingServiceImpl implements ListingService{
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Listing slug already exists.");
         }
 
-        SellerProfile sellerProfile = sellerRepository.findById(AuthUtils.extractUserId())
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Seller profile not found. Please complete seller registration first."));
+        String sellerId = AuthUtils.extractUserId();
+        // Holding the SELLER role is not enough on its own: the role survives a
+        // suspension, and posting is what the subscription is sold for. Both are
+        // checked before any file is claimed, so a refused request leaves nothing
+        // half-attached.
+        SellerProfile sellerProfile = sellerAccessGuard.requireActiveSeller(sellerId);
+        subscriptionService.requirePostingAllowed(sellerId);
 
-        FileUpload thumbnailFile = fileUploadRepository.findByObjectName(request.thumbnailObjectName())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Thumbnail file not found: " + request.thumbnailObjectName() + ". Please upload it first."));
+        FileUpload thumbnailFile = fileUploadService.requireOwnedFile(request.thumbnailObjectName(), sellerId);
 
-        Map<String, FileUpload> imageFiles = resolveImageFiles(request.images());
+        Map<String, FileUpload> imageFiles = resolveImageFiles(request.images(), sellerId);
 
         Listing listing = new Listing();
         listing.setSellerProfile(sellerProfile);
@@ -155,6 +159,14 @@ public class ListingServiceImpl implements ListingService{
             listing.setStockQty(request.stockQty());
         }
         if (request.status() != null) {
+            // Archived listings do not count against the plan, so bringing one back is
+            // the same act as publishing a new one. Without this check a seller could
+            // archive their way under the limit and then un-archive everything, ending
+            // up with twice the listings their plan allows.
+            if (listing.getStatus() == ListingStatus.ARCHIVED
+                    && request.status() != ListingStatus.ARCHIVED) {
+                subscriptionService.requirePostingAllowed(currentSellerId);
+            }
             listing.setStatus(request.status());
         }
         if (request.isFeatured() != null) {
@@ -173,8 +185,7 @@ public class ListingServiceImpl implements ListingService{
         if (!listing.getSellerProfile().getSellerId().equals(currentSellerId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not allowed to update this listing.");
         }
-        FileUpload newFile = fileUploadRepository.findByObjectName(objectName)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Thumbnail file not found: " + objectName + ". Please upload it first."));
+        FileUpload newFile = fileUploadService.requireOwnedFile(objectName, currentSellerId);
         FileUpload oldFile = listing.getThumbnailFile();
         listing.setThumbnailFile(newFile);
         Listing saved = listingRepository.save(listing);
@@ -192,9 +203,7 @@ public class ListingServiceImpl implements ListingService{
         if (!listing.getSellerProfile().getSellerId().equals(currentSellerId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not allowed to update this listing.");
         }
-        FileUpload file = fileUploadRepository.findByObjectName(request.objectName())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Image file not found: " + request.objectName() + ". Please upload it first."));
+        FileUpload file = fileUploadService.requireOwnedFile(request.objectName(), currentSellerId);
         ListingImage image = new ListingImage();
         image.setFile(file);
         image.setSortOrder(request.sortOrder() != null ? request.sortOrder() : listing.getImages().size());
@@ -225,23 +234,21 @@ public class ListingServiceImpl implements ListingService{
         listingRepository.save(listing);
         fileUploadService.delete(objectName);
     }
-    private Map<String, FileUpload> resolveImageFiles(List<ListingImageRequest> images) {
+    /**
+     * Resolves the client-supplied object names, confirming this seller uploaded
+     * each one. Looking them up without that check let a seller attach another
+     * user's file to their own listing — and then destroy it, since deleting a
+     * listing deletes the objects behind its images.
+     */
+    private Map<String, FileUpload> resolveImageFiles(List<ListingImageRequest> images, String sellerId) {
         if (images == null || images.isEmpty()) {
             return Map.of();
         }
         List<String> requestedNames = images.stream()
                 .map(ListingImageRequest::objectName)
                 .toList();
-        List<FileUpload> found = fileUploadRepository.findAllByObjectNameIn(requestedNames);
-        Map<String, FileUpload> foundByName = found.stream()
+        return fileUploadService.requireOwnedFiles(requestedNames, sellerId).stream()
                 .collect(Collectors.toMap(FileUpload::getObjectName, Function.identity()));
-        List<String> missing = requestedNames.stream()
-                .filter(name -> !foundByName.containsKey(name))
-                .toList();
-        if (!missing.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The following image files were not found, please upload them first: " + missing);
-        }
-        return foundByName;
     }
 
     private void attachImages(Listing listing, List<ListingImageRequest> images, Map<String, FileUpload> imageFiles) {
@@ -292,15 +299,12 @@ public class ListingServiceImpl implements ListingService{
         }
 
 
-        if (!fileNamesToDelete.isEmpty()) {
-            for (String fileName : fileNamesToDelete) {
-                try {
-                    fileUploadService.delete(fileName);
-                } catch (Exception e) {
-
-                    System.err.println("Failed to delete file after listing deletion: " + fileName + " - " + e.getMessage());
-
-                }
+        for (String fileName : fileNamesToDelete) {
+            try {
+                fileUploadService.delete(fileName);
+            } catch (Exception exception) {
+                // A leftover object is cheaper than refusing to delete the listing.
+                log.warn("Failed to delete file '{}' after deleting listing {}", fileName, uuid, exception);
             }
         }
 

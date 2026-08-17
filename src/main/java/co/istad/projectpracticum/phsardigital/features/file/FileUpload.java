@@ -24,4 +24,20 @@ public class FileUpload extends BasedEntity {
     private String originalName;
     private String contentType;
     private Long size;
+
+    /**
+     * Which bucket the object was actually written to. Recorded rather than
+     * inferred so a delete always reaches the right bucket, even after the
+     * configured bucket names change. Null on rows written before private storage
+     * existed — {@link FileUploadServiceImpl} reads those as the public bucket.
+     */
+    private String bucket;
+
+    /**
+     * Whether the object is anonymously readable. Drives how its URL is built, so
+     * a private document can never be handed out as a permanent public link. Null
+     * on legacy rows, which are all public.
+     */
+    @Enumerated(EnumType.STRING)
+    private FileVisibility visibility;
 }

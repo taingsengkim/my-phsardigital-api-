@@ -4,6 +4,7 @@ package co.istad.projectpracticum.phsardigital.features.seller;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingResponse;
 import co.istad.projectpracticum.phsardigital.features.seller.dto.SellerProfileResponse;
 import co.istad.projectpracticum.phsardigital.features.seller.dto.SellerProfileUpdateRequest;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -36,7 +37,7 @@ public class SellerProfileController {
     }
 
     @PatchMapping("/me")
-    public SellerProfileResponse updateMyProfile(@RequestBody SellerProfileUpdateRequest request) {
+    public SellerProfileResponse updateMyProfile(@Valid @RequestBody SellerProfileUpdateRequest request) {
         return service.updateMyProfile(request);
     }
 }

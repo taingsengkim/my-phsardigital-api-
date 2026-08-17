@@ -3,8 +3,7 @@ package co.istad.projectpracticum.phsardigital.features.review;
 
 
 import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
-import co.istad.projectpracticum.phsardigital.features.file.FileUpload;
-import co.istad.projectpracticum.phsardigital.features.file.FileUploadRepository;
+import co.istad.projectpracticum.phsardigital.features.file.FileUploadService;
 import co.istad.projectpracticum.phsardigital.features.listings.Listing;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingRepository;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingStatus;
@@ -41,7 +40,7 @@ public class ReviewServiceImpl implements ReviewService {
     private final ListingRepository listingRepository;
     private final UserProfileRepository userRepository;
     private final SellerProfileRepository sellerProfileRepository;
-    private final FileUploadRepository fileUploadRepository;
+    private final FileUploadService fileUploadService;
     private final ReviewMapper reviewMapper;
     private final ReviewReplyMapper replyMapper;
 
@@ -86,10 +85,7 @@ public class ReviewServiceImpl implements ReviewService {
 
         // 6. Handle photo if provided
         if (request.photoObjectName() != null) {
-            FileUpload photo = fileUploadRepository.findByObjectName(request.photoObjectName())
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                            "Photo not found: " + request.photoObjectName()));
-            review.setPhoto(photo);
+            review.setPhoto(fileUploadService.requireOwnedFile(request.photoObjectName(), userId));
         }
 
         Review saved = reviewRepository.save(review);
@@ -127,10 +123,7 @@ public class ReviewServiceImpl implements ReviewService {
             review.setComment(request.comment());
         }
         if (request.photoObjectName() != null) {
-            FileUpload photo = fileUploadRepository.findByObjectName(request.photoObjectName())
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                            "Photo not found: " + request.photoObjectName()));
-            review.setPhoto(photo);
+            review.setPhoto(fileUploadService.requireOwnedFile(request.photoObjectName(), userId));
         }
         review.setIsEdited(true);
 

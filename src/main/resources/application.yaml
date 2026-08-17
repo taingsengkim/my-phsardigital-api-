@@ -3,11 +3,23 @@ minio:
   public-url: ${MINIO_PUBLIC_URL:http://localhost:9000}
   access-key: ${MINIO_ACCESS_KEY:admin}
   secret-key: ${MINIO_SECRET_KEY:admin123}
+  # Anonymously readable: avatars, listing images, category icons.
   bucket: ${MINIO_BUCKET:products}
+  # No bucket policy at all: seller identity documents and business licences,
+  # reachable only through a presigned URL.
+  private-bucket: ${MINIO_PRIVATE_BUCKET:documents}
   auto-create-bucket: ${MINIO_AUTO_CREATE_BUCKET:true}
   public-read: ${MINIO_PUBLIC_READ:true}
   max-image-size: ${MINIO_MAX_IMAGE_SIZE:5MB}
+  max-document-size: ${MINIO_MAX_DOCUMENT_SIZE:10MB}
+  presigned-url-expiry: ${MINIO_PRESIGNED_URL_EXPIRY:15m}
+  # Only formats FileTypeDetector can identify by their leading bytes are usable
+  # here; anything else is rejected on upload regardless of what the client says.
   allowed-image-types: ${MINIO_ALLOWED_IMAGE_TYPES:image/jpeg,image/png,image/webp,image/gif}
+  # Business licences arrive as scans, PDFs and Word files alike, so all three are
+  # accepted. The Office entries match any ZIP/OLE2 container — see FileTypeDetector
+  # for why that is tolerable here and nowhere else.
+  allowed-document-types: ${MINIO_ALLOWED_DOCUMENT_TYPES:application/pdf,image/jpeg,image/png,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword}
 
 spring:
   application:

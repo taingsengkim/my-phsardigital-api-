@@ -23,6 +23,6 @@ public abstract class ListingImageMapper {
     public abstract List<ListingImageResponse> toResponseList(List<ListingImage> images);
     protected String toUri(ListingImage image) {
         if (image.getFile() == null) return null;
-        return fileUploadService.getPreviewUrl(image.getFile().getObjectName());
+        return fileUploadService.getPreviewUrl(image.getFile());
     }
 }
