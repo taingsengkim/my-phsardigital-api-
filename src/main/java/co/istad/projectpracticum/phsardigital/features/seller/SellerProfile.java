@@ -1,12 +1,14 @@
 package co.istad.projectpracticum.phsardigital.features.seller;
 
 import co.istad.projectpracticum.phsardigital.config.config.BasedEntity;
+import co.istad.projectpracticum.phsardigital.features.file.FileUpload;
 import co.istad.projectpracticum.phsardigital.features.listings.Listing;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -50,6 +52,31 @@ public class SellerProfile extends BasedEntity {
 
     @Column(length = 100)
     private String province;
+
+    /**
+     * Shop logo, stored in the public bucket so it can be rendered straight from an
+     * {@code <img>} tag. Held as a reference rather than a bare object name so the
+     * mapper can pick the right URL scheme and so deleting the file detaches it —
+     * see {@code SellerProfileFileListener}.
+     */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "logo_file_id")
+    private FileUpload logoFile;
+
+    /**
+     * Shop pin, matching the precision {@code Address} uses for delivery
+     * coordinates. Stored as the pair rather than only a Google Maps link so the
+     * shop can be placed on a map and searched by distance without parsing a URL.
+     */
+    @Column(precision = 10, scale = 8)
+    private BigDecimal latitude;
+
+    @Column(precision = 11, scale = 8)
+    private BigDecimal longitude;
+
+    /** The shop's Google Maps link, kept alongside the pin for one-tap directions. */
+    @Column(name = "google_map_url", columnDefinition = "TEXT")
+    private String googleMapUrl;
 
     @ElementCollection
     @CollectionTable(

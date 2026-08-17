@@ -52,6 +52,6 @@ public abstract class UserProfileMapper {
     }
 
     private String avatarUrl(FileUpload avatar) {
-        return avatar == null ? null : fileUploadService.getPreviewUrl(avatar.getObjectName());
+        return fileUploadService.getPreviewUrl(avatar);
     }
 }

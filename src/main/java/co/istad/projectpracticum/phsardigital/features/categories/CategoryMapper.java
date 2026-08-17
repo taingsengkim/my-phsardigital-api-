@@ -36,6 +36,6 @@ public abstract class CategoryMapper {
         if (category == null || category.getIconFile() == null) {
             return null;
         }
-        return fileUploadService.getPreviewUrl(category.getIconFile().getObjectName());
+        return fileUploadService.getPreviewUrl(category.getIconFile());
     }
 }

@@ -62,6 +62,10 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/admin/seller-applications/**").hasRole("ADMIN")
                         .requestMatchers("/api/v1/user-profiles/**").authenticated()
                         .requestMatchers("/api/v1/seller-applications/**").hasAnyRole("USER", "ADMIN")
+                        // The pricing page is read before subscribing, so it cannot
+                        // require a subscriber. Everything else here is per-seller.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/subscriptions/plans").permitAll()
+                        .requestMatchers("/api/v1/subscriptions/**").hasAnyRole("SELLER", "ADMIN")
                         .requestMatchers("/api/v1/purchases/seller/**").hasAnyRole("SELLER", "ADMIN")
                         .requestMatchers("/api/v1/purchases/**").hasAnyRole("USER", "SELLER", "ADMIN")
                         .requestMatchers("/api/v1/conversations/**").authenticated()
@@ -70,9 +74,14 @@ public class SecurityConfig {
                         .requestMatchers("/scalar/**").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/actuator/info").permitAll()
                         // Previews stay open so <img> tags work; writing and deleting do not.
+                        // The preview endpoint refuses to describe private files, so
+                        // opening it up does not expose seller documents.
                         .requestMatchers(HttpMethod.GET, "/api/v1/files/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/files/**").authenticated()
-                        .requestMatchers(HttpMethod.DELETE, "/api/v1/files/**").hasAnyRole("SELLER", "ADMIN")
+                        // A role is the wrong gate for deletes: it let any seller remove
+                        // another seller's images, while stopping a buyer removing their
+                        // own avatar. FileUploadService checks the uploader instead.
+                        .requestMatchers(HttpMethod.DELETE, "/api/v1/files/**").authenticated()
                         .anyRequest().authenticated());
 
         http.sessionManagement(state ->

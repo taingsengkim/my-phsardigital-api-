@@ -7,6 +7,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.util.unit.DataSize;
 
+import java.time.Duration;
 import java.util.List;
 
 @Configuration
@@ -31,25 +32,66 @@ public class MinioProps {
 
     private String secretKey;
 
+    /**
+     * Bucket for anonymously readable objects: avatars, listing images, category
+     * icons. Everything in here is world-readable by design.
+     */
     private String bucket;
 
     /**
-     * Create the bucket at startup when it is missing.
+     * Bucket for objects that must never be anonymously readable — identity
+     * documents and business licences attached to seller applications. It carries
+     * no bucket policy, so the only way in is a presigned URL.
+     */
+    private String privateBucket;
+
+    /**
+     * Create the buckets at startup when they are missing.
      */
     private boolean autoCreateBucket = true;
 
     /**
-     * Grant anonymous read on every object in the bucket at startup. The preview
-     * URLs handed to the browser are unsigned, so they only resolve while this is
-     * enabled. Turn it off only alongside a move to presigned URLs.
+     * Grant anonymous read on every object in {@link #bucket} at startup. The
+     * preview URLs handed to the browser are unsigned, so they only resolve while
+     * this is enabled. Turn it off only alongside a move to presigned URLs.
+     *
+     * <p>Never applies to {@link #privateBucket}.
      */
     private boolean publicRead = true;
 
     private DataSize maxImageSize = DataSize.ofMegabytes(5);
 
+    /**
+     * Documents are scans rather than thumbnails, so they get more room than
+     * images — but still well under the servlet container's own cap.
+     */
+    private DataSize maxDocumentSize = DataSize.ofMegabytes(10);
+
+    /**
+     * Only formats {@link co.istad.projectpracticum.phsardigital.features.file.FileTypeDetector}
+     * can positively identify belong here. Adding a type the detector does not
+     * know silently makes it unusable rather than unsafe: every upload of it is
+     * rejected.
+     */
     private List<String> allowedImageTypes = List.of(
             "image/jpeg", "image/png", "image/webp", "image/gif"
     );
+
+    /**
+     * A PDF or a photo of the document. SVG and HTML are deliberately absent —
+     * both are executable in a browser.
+     */
+    private List<String> allowedDocumentTypes = List.of(
+            "application/pdf", "image/jpeg", "image/png"
+    );
+
+    /**
+     * How long a presigned download link for a private object stays valid. Long
+     * enough for an admin to open the document, short enough that a leaked URL in
+     * a referrer header or a chat log is worthless by the time anybody finds it.
+     * MinIO caps this at seven days.
+     */
+    private Duration presignedUrlExpiry = Duration.ofMinutes(15);
 
     /**
      * @return the browser-facing base URL, always with a trailing slash.

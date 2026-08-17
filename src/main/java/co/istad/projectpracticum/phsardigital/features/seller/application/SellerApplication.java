@@ -1,10 +1,12 @@
 package co.istad.projectpracticum.phsardigital.features.seller.application;
 
 import co.istad.projectpracticum.phsardigital.config.config.BasedEntity;
+import co.istad.projectpracticum.phsardigital.features.file.FileUpload;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -31,11 +33,32 @@ public class SellerApplication extends BasedEntity {
     @Column(columnDefinition = "TEXT")
     private String description;
 
+    @Column(columnDefinition = "TEXT")
+    private String address;
+
     @Column(length = 100)
     private String city;
 
     @Column(length = 100)
     private String province;
+
+    /**
+     * Shop logo the applicant picked. A public image, unlike the supporting
+     * documents in {@link SellerApplicationDocument} — a logo is meant to be seen,
+     * an identity card is not. Copied onto the {@code SellerProfile} on approval.
+     */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "logo_file_id")
+    private FileUpload logoFile;
+
+    @Column(precision = 10, scale = 8)
+    private BigDecimal latitude;
+
+    @Column(precision = 11, scale = 8)
+    private BigDecimal longitude;
+
+    @Column(name = "google_map_url", columnDefinition = "TEXT")
+    private String googleMapUrl;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)

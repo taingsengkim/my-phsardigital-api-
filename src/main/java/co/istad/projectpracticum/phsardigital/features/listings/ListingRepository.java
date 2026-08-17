@@ -24,4 +24,11 @@ public interface ListingRepository extends JpaRepository<Listing, UUID> {
 
 
     Page<Listing> findBySellerProfileAndStatus(SellerProfile seller, ListingStatus status, Pageable pageable);
+
+    /**
+     * How many listings count against a seller's subscription plan. Excludes one
+     * status rather than listing the counted ones, so a new {@code ListingStatus}
+     * counts by default instead of silently slipping past the limit.
+     */
+    long countBySellerProfile_SellerIdAndStatusNot(String sellerId, ListingStatus status);
 }

@@ -31,7 +31,7 @@ public abstract class ListingMapper {
         return new ThumbnailImageResponse(
                 listing.getThumbnailFile().getId().toString(),
                 listing.getThumbnailFile().getObjectName(),
-                fileUploadService.getPreviewUrl(listing.getThumbnailFile().getObjectName())
+                fileUploadService.getPreviewUrl(listing.getThumbnailFile())
         );
     }
 }

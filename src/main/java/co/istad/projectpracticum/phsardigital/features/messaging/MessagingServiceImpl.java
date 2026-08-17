@@ -3,6 +3,8 @@ package co.istad.projectpracticum.phsardigital.features.messaging;
 import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
 import co.istad.projectpracticum.phsardigital.features.file.FileUploadService;
 import co.istad.projectpracticum.phsardigital.features.messaging.dto.*;
+import co.istad.projectpracticum.phsardigital.features.seller.SellerAccessGuard;
+import co.istad.projectpracticum.phsardigital.features.subscription.SubscriptionService;
 import co.istad.projectpracticum.phsardigital.features.user.UserProfile;
 import co.istad.projectpracticum.phsardigital.features.user.UserProfileRepository;
 import lombok.RequiredArgsConstructor;
@@ -29,6 +31,8 @@ public class MessagingServiceImpl implements MessagingService {
     private final UserProfileRepository userProfileRepository;
     private final SimpMessagingTemplate messagingTemplate;
     private final FileUploadService fileUploadService;
+    private final SellerAccessGuard sellerAccessGuard;
+    private final SubscriptionService subscriptionService;
     @Override
     @Transactional(readOnly = true)
     public List<ConversationResponse> getMyConversations() {
@@ -53,6 +57,7 @@ public class MessagingServiceImpl implements MessagingService {
         if (!userProfileRepository.existsById(other)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found.");
         }
+        requireChatAllowedIfSeller(me);
 
         Conversation conversation = findOrCreate(me, other);
         return toResponse(conversation, me);
@@ -75,6 +80,7 @@ public class MessagingServiceImpl implements MessagingService {
     public MessageResponse sendMessage(UUID conversationUuid, SendMessageRequest request) {
         String me = AuthUtils.extractUserId();
         Conversation conversation = requireParticipant(conversationUuid, me);
+        requireChatAllowedIfSeller(me);
 
         Message message = new Message();
         message.setConversation(conversation);
@@ -112,6 +118,24 @@ public class MessagingServiceImpl implements MessagingService {
     }
 
     // ---------- helpers ----------
+
+    /**
+     * Gates <em>sending</em> on the sender's subscription, and only when the sender
+     * is a shop.
+     *
+     * <p>Buyers are never charged to talk to a shop, so the check is skipped for
+     * anybody without a seller profile — otherwise a customer's first question would
+     * bounce. Reading a thread is left open in both directions too: a lapsed seller
+     * should be able to see the enquiries they are missing, which is the whole
+     * argument for renewing.
+     */
+    private void requireChatAllowedIfSeller(String userId) {
+        if (!sellerAccessGuard.isSeller(userId)) {
+            return;
+        }
+        sellerAccessGuard.requireActiveSeller(userId);
+        subscriptionService.requireChatAllowed(userId);
+    }
 
     /** Normalizes the pair (a < b) so one pair == one conversation. */
     private Conversation findOrCreate(String me, String other) {
@@ -167,7 +191,7 @@ public class MessagingServiceImpl implements MessagingService {
         if (profile == null || profile.getAvatarFile() == null) {
             return null;
         }
-        return fileUploadService.getPreviewUrl(profile.getAvatarFile().getObjectName());
+        return fileUploadService.getPreviewUrl(profile.getAvatarFile());
     }
 
     private MessageResponse toMessageResponse(Message m) {
