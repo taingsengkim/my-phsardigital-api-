@@ -30,6 +30,7 @@ public class UserProfileServiceImpl implements UserProfileService {
     private final Keycloak keycloak;
     private final UserProfileMapper profileMapper;
     private final FileUploadService fileUploadService;
+    private final UserProvisioningService userProvisioningService;
 
     @Override
     @Transactional
@@ -148,76 +149,7 @@ public class UserProfileServiceImpl implements UserProfileService {
      * of every profile endpoint with a permanent 404.
      */
     private UserProfile currentProfile() {
-        Jwt token = AuthUtils.extractToken();
-        String userId = token.getSubject();
-
-        UserProfile existing = userProfileRepository.findById(userId).orElse(null);
-        UserProfile profile = existing != null ? existing : provisionFromToken(token);
-
-        boolean changed = syncFromToken(profile, token);
-        if (existing == null || changed) {
-            profile = userProfileRepository.saveAndFlush(profile);
-        }
-        return profile;
-    }
-
-    private UserProfile provisionFromToken(Jwt token) {
-        String email = token.getClaimAsString("email");
-        if (email == null || email.isBlank()) {
-            throw new ResponseStatusException(
-                    HttpStatus.NOT_FOUND,
-                    "Profile not found and the access token carries no email to create one."
-            );
-        }
-        UserProfile profile = new UserProfile(token.getSubject());
-        profile.setEmail(email);
-        profile.setStatus(UserStatus.ACTIVE);
-        log.info("Provisioned a missing user profile for {}", token.getSubject());
-        return profile;
-    }
-
-    /**
-     * Copies identity data the token already carries onto the profile.
-     *
-     * @return true when at least one field changed and the row needs saving.
-     */
-    private boolean syncFromToken(UserProfile profile, Jwt token) {
-        boolean changed = false;
-
-        String email = token.getClaimAsString("email");
-        if (email != null && !email.equals(profile.getEmail())) {
-            profile.setEmail(email);
-            changed = true;
-        }
-
-        String username = token.getClaimAsString("preferred_username");
-        if (username != null && !username.equals(profile.getUsername())) {
-            profile.setUsername(username);
-            changed = true;
-        }
-
-        String firstName = token.getClaimAsString("given_name");
-        if (firstName != null && !firstName.equals(profile.getFirstName())) {
-            profile.setFirstName(firstName);
-            changed = true;
-        }
-
-        String lastName = token.getClaimAsString("family_name");
-        if (lastName != null && !lastName.equals(profile.getLastName())) {
-            profile.setLastName(lastName);
-            changed = true;
-        }
-
-        Boolean emailVerified = token.getClaim("email_verified");
-        if (emailVerified != null && !emailVerified.equals(profile.getEmailVerified())) {
-            profile.setEmailVerified(emailVerified);
-            changed = true;
-        }
-
-        if (changed) {
-            profile.refreshFullName();
-        }
-        return changed;
+        return userProvisioningService.syncFromToken(AuthUtils.extractToken());
     }
 
     private void restoreKeycloakName(

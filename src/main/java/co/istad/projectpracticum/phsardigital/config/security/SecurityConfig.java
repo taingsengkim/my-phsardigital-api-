@@ -1,6 +1,7 @@
 package co.istad.projectpracticum.phsardigital.config.security;
 
 import co.istad.projectpracticum.phsardigital.core.exception.RestSecurityErrorHandler;
+import co.istad.projectpracticum.phsardigital.features.user.UserProvisioningService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.beans.factory.annotation.Value;
@@ -14,9 +15,11 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -26,7 +29,9 @@ public class SecurityConfig {
     private java.util.List<String> allowedOriginPatterns;
 
     @Bean
-    public SecurityFilterChain apiSecurity(HttpSecurity http, RestSecurityErrorHandler securityErrorHandler) {
+    public SecurityFilterChain apiSecurity(HttpSecurity http,
+                                           RestSecurityErrorHandler securityErrorHandler,
+                                           UserProvisioningService userProvisioningService) {
         //Security Mechani
         // Both the resource server and the chain itself are pointed at the same
         // handler, otherwise a rejected token returns an empty body while every
@@ -48,6 +53,10 @@ public class SecurityConfig {
         http.authorizeHttpRequests(auth ->
                 auth.requestMatchers(HttpMethod.GET,"/api/v1/categories","/api/v1/categories/**").permitAll()
                         .requestMatchers(HttpMethod.GET,"/api/v1/listings", "/api/v1/listings/**").permitAll()
+                        // Ordered before the open /auth/** rule below: /auth/me answers
+                        // for the current token, so it is the one auth endpoint that
+                        // needs one. Registration stays anonymous.
+                        .requestMatchers(HttpMethod.GET,"/api/v1/auth/me").authenticated()
                         .requestMatchers("/api/v1/auth/**").permitAll()
                         .requestMatchers(HttpMethod.POST,"/api/v1/categories","/api/v1/categories/**").hasAnyRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH,"/api/v1/categories/**").hasRole("ADMIN")
@@ -84,6 +93,12 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/v1/files/**").authenticated()
                         .anyRequest().authenticated());
 
+        // After authentication, so the token is already on the context and the filter
+        // has something to reconcile; before the controllers, so any endpoint can
+        // assume the caller's row exists.
+        http.addFilterAfter(new UserProvisioningFilter(userProvisioningService),
+                BearerTokenAuthenticationFilter.class);
+
         http.sessionManagement(state ->
                 state.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
 
@@ -93,12 +108,29 @@ public class SecurityConfig {
         return http.build();
     }
 
+    /**
+     * Maps Keycloak's realm roles onto Spring authorities.
+     *
+     * <p>Both lookups are guarded because a token really can arrive without them.
+     * Keycloak omits {@code realm_access} entirely for a user who holds no realm
+     * role, and that is exactly what a brand-new social sign-in looks like when the
+     * realm has no default role configured — so the unguarded version answered every
+     * such request with a 500 from inside the security filter, which is close to
+     * undiagnosable. An empty authority list is the honest answer: they are
+     * authenticated, they are simply not authorised for anything yet.
+     */
     @Bean
     public JwtAuthenticationConverter jwtAuthenticationConverter(){
         Converter<Jwt, Collection<GrantedAuthority>> jwtGrantedAuthroiteiesConverter = jwt -> {
-            Map<String,Collection> realmAccess = jwt.getClaim("realm_access");
-            Collection<String> roles = realmAccess.get("roles");
+            Map<String, Object> realmAccess = jwt.getClaim("realm_access");
+            if (realmAccess == null) {
+                return List.of();
+            }
+            if (!(realmAccess.get("roles") instanceof Collection<?> roles)) {
+                return List.of();
+            }
             return roles.stream()
+                    .map(String::valueOf)
                     .map(role->new SimpleGrantedAuthority("ROLE_"+role))
                     .collect(Collectors.toList());
         };

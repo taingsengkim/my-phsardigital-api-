@@ -3,8 +3,11 @@ package co.istad.projectpracticum.phsardigital.features.auth;
 import co.istad.projectpracticum.phsardigital.config.security.KeycloakAdminProps;
 import co.istad.projectpracticum.phsardigital.features.auth.dto.RegisterRequest;
 import co.istad.projectpracticum.phsardigital.features.auth.dto.RegisterResponse;
+import co.istad.projectpracticum.phsardigital.features.seller.SellerRepository;
 import co.istad.projectpracticum.phsardigital.features.user.UserProfile;
+import co.istad.projectpracticum.phsardigital.features.user.UserProfileMapper;
 import co.istad.projectpracticum.phsardigital.features.user.UserProfileRepository;
+import co.istad.projectpracticum.phsardigital.features.user.UserProvisioningService;
 import jakarta.ws.rs.core.Response;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -66,12 +69,19 @@ class AuthServiceImplTest {
     private AuthMapper authMapper;
     @Mock
     private Response response;
+    @Mock
+    private UserProvisioningService userProvisioningService;
+    @Mock
+    private UserProfileMapper userProfileMapper;
+    @Mock
+    private SellerRepository sellerRepository;
 
     private AuthServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        service = new AuthServiceImpl(keycloak, userProfileRepository, props, authMapper);
+        service = new AuthServiceImpl(keycloak, userProfileRepository, props, authMapper,
+                userProvisioningService, userProfileMapper, sellerRepository);
         when(props.getTargetRealm()).thenReturn(REALM);
         when(keycloak.realm(REALM)).thenReturn(realmResource);
         when(realmResource.users()).thenReturn(usersResource);

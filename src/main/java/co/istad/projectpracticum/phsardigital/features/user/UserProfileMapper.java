@@ -23,7 +23,7 @@ public abstract class UserProfileMapper {
                 p.getLastName(),
                 p.getFullName(),
                 p.getPhone(),
-                avatarUrl(p.getAvatarFile()),
+                avatarUrl(p),
                 p.getAvatarFile() != null ? p.getAvatarFile().getObjectName() : null,
                 p.getGender(),
                 p.getBio(),
@@ -42,7 +42,7 @@ public abstract class UserProfileMapper {
                 profile.getEmailVerified(),
                 profile.getFullName(),
                 profile.getPhone(),
-                avatarUrl(profile.getAvatarFile()),
+                avatarUrl(profile),
                 profile.getGender(),
                 profile.getStatus(),
                 profile.getDateOfBirth(),
@@ -51,7 +51,19 @@ public abstract class UserProfileMapper {
         );
     }
 
-    private String avatarUrl(FileUpload avatar) {
-        return fileUploadService.getPreviewUrl(avatar);
+    /**
+     * The picture to show for this user: whatever they uploaded, otherwise the one
+     * their identity provider supplied.
+     *
+     * <p>Order matters. An uploaded avatar is a deliberate choice and outranks the
+     * Google or Facebook photo, which is refreshed from the token on every sign-in
+     * and would otherwise keep reappearing.
+     */
+    public String avatarUrl(UserProfile profile) {
+        FileUpload uploaded = profile.getAvatarFile();
+        if (uploaded != null) {
+            return fileUploadService.getPreviewUrl(uploaded);
+        }
+        return profile.getExternalAvatarUrl();
     }
 }

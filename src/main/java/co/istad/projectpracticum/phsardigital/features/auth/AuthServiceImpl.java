@@ -1,10 +1,15 @@
 package co.istad.projectpracticum.phsardigital.features.auth;
 
+import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
 import co.istad.projectpracticum.phsardigital.config.security.KeycloakAdminProps;
+import co.istad.projectpracticum.phsardigital.features.auth.dto.MeResponse;
 import co.istad.projectpracticum.phsardigital.features.auth.dto.RegisterRequest;
 import co.istad.projectpracticum.phsardigital.features.auth.dto.RegisterResponse;
+import co.istad.projectpracticum.phsardigital.features.seller.SellerRepository;
 import co.istad.projectpracticum.phsardigital.features.user.UserProfile;
+import co.istad.projectpracticum.phsardigital.features.user.UserProfileMapper;
 import co.istad.projectpracticum.phsardigital.features.user.UserProfileRepository;
+import co.istad.projectpracticum.phsardigital.features.user.UserProvisioningService;
 import co.istad.projectpracticum.phsardigital.features.user.UserStatus;
 import jakarta.ws.rs.core.Response;
 import lombok.RequiredArgsConstructor;
@@ -17,11 +22,14 @@ import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -33,6 +41,48 @@ public class AuthServiceImpl implements AuthService{
     private final UserProfileRepository userProfileRepository;
     private final KeycloakAdminProps props;
     private final AuthMapper authMapper;
+    private final UserProvisioningService userProvisioningService;
+    private final UserProfileMapper userProfileMapper;
+    private final SellerRepository sellerRepository;
+
+    @Override
+    @Transactional
+    public MeResponse me() {
+        Jwt token = AuthUtils.extractToken();
+        UserProfile profile = userProvisioningService.syncFromToken(token);
+
+        // The seller id is the Keycloak subject, so the profile's existence is the
+        // whole answer — no second identifier to look up.
+        boolean isSeller = sellerRepository.existsById(profile.getId());
+
+        return MeResponse.builder()
+                .userId(profile.getId())
+                .username(profile.getUsername())
+                .email(profile.getEmail())
+                .fullName(profile.getFullName())
+                .phone(profile.getPhone())
+                .avatarUrl(userProfileMapper.avatarUrl(profile))
+                .roles(realmRoles(token))
+                .isSeller(isSeller)
+                .sellerId(isSeller ? profile.getId() : null)
+                .build();
+    }
+
+    /**
+     * Reads the realm roles straight off the token rather than asking Keycloak, so
+     * signing in costs no round trip to the identity server.
+     */
+    @SuppressWarnings("unchecked")
+    private List<String> realmRoles(Jwt token) {
+        Map<String, Object> realmAccess = token.getClaim("realm_access");
+        if (realmAccess == null) {
+            return List.of();
+        }
+        Object roles = realmAccess.get("roles");
+        return roles instanceof Collection<?> collection
+                ? List.copyOf((Collection<String>) collection)
+                : List.of();
+    }
 
     @Override
     @Transactional

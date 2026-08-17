@@ -52,6 +52,30 @@ public class UserProfile extends BasedEntity {
     @JoinColumn(name = "avatar_file_id")
     private FileUpload avatarFile;
 
+    /**
+     * Profile picture hosted by the identity provider — the {@code picture} claim
+     * Google and Facebook supply. Kept as a URL rather than copied into MinIO: it is
+     * somebody else's image on somebody else's CDN, and re-hosting it on every login
+     * would be a download per sign-in for a picture the user may replace anyway.
+     *
+     * <p>Used only as a fallback. {@link #avatarFile} wins whenever it is set, so an
+     * avatar the user deliberately uploaded is never overwritten by their Google
+     * photo on the next login.
+     */
+    @Column(name = "external_avatar_url", length = 1000)
+    private String externalAvatarUrl;
+
+    /**
+     * Which identity provider the account came through — {@code google},
+     * {@code facebook}, or null for an account registered with a password here.
+     *
+     * <p>Populated from the {@code identity_provider} claim, which Keycloak only
+     * emits once a hardcoded claim mapper is added to the client; without that
+     * mapper this stays null and nothing else changes.
+     */
+    @Column(name = "identity_provider", length = 50)
+    private String identityProvider;
+
     @Column(name = "date_of_birth")
     private LocalDate dateOfBirth;
 
