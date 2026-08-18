@@ -57,6 +57,18 @@ public class AuthUtils {
     }
 
     /**
+     * Whether there is a real caller behind this request. The non-throwing
+     * counterpart to {@link #extractUserId()}, for deciding what to show rather than
+     * demanding a token.
+     */
+    public static boolean isAuthenticated(){
+        Authentication auth = getAuth();
+        return auth != null
+                && !(auth instanceof AnonymousAuthenticationToken)
+                && auth instanceof JwtAuthenticationToken;
+    }
+
+    /**
      * Checks a realm role on the current caller without throwing when there is no
      * caller, so it can be used to widen a permission rather than to demand one.
      *

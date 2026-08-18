@@ -31,4 +31,10 @@ public interface ListingRepository extends JpaRepository<Listing, UUID> {
      * counts by default instead of silently slipping past the limit.
      */
     long countBySellerProfile_SellerIdAndStatusNot(String sellerId, ListingStatus status);
+
+    long countByStatus(ListingStatus status);
+
+    Page<Listing> findBySellerProfile_SellerId(String sellerId, Pageable pageable);
+
+    Page<Listing> findBySellerProfile_SellerIdAndStatus(String sellerId, ListingStatus status, Pageable pageable);
 }

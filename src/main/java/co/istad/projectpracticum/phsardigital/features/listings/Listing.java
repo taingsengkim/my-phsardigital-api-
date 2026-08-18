@@ -10,6 +10,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -69,6 +70,28 @@ public class Listing extends BasedEntity {
 
     @OneToMany( mappedBy = "listing" , orphanRemoval = true, cascade = CascadeType.ALL)
     private List<ListingAttribute> listingAttributes ;
+
+    // Moderation. Shaped after SellerApplication's reviewedBy/reviewedAt/rejectionNote
+    // so "who did this and why" is answered the same way across the admin surface.
+
+    @Column(name = "moderated_by")
+    private String moderatedBy;
+
+    @Column(name = "moderated_at")
+    private LocalDateTime moderatedAt;
+
+    @Column(name = "moderation_reason", columnDefinition = "TEXT")
+    private String moderationReason;
+
+    /**
+     * What the listing was before it was suspended, so restoring puts it back rather
+     * than publishing it. A restore that always chose {@code ACTIVE} would resurrect
+     * an archived listing, which is the plan-limit bypass {@code update} already
+     * guards against.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status_before_suspension", length = 20)
+    private ListingStatus statusBeforeSuspension;
 
 
 //    @Column(name = "average_rating")

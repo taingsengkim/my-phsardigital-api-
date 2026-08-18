@@ -19,6 +19,7 @@ import co.istad.projectpracticum.phsardigital.features.seller.SellerProfileRepos
 import co.istad.projectpracticum.phsardigital.features.user.UserProfile;
 import co.istad.projectpracticum.phsardigital.features.user.UserProfileRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -33,6 +34,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ReviewServiceImpl implements ReviewService {
 
     private final ReviewRepository reviewRepository;
@@ -146,6 +148,17 @@ public class ReviewServiceImpl implements ReviewService {
         Listing listing = review.getListing();
         reviewRepository.delete(review);
 //        updateListingRating(listing);
+    }
+
+    @Override
+    @Transactional
+    public void deleteReviewAsAdmin(UUID reviewUuid) {
+        Review review = reviewRepository.findById(reviewUuid)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Review not found"));
+
+        log.info("Review {} on listing {} removed by admin {}",
+                reviewUuid, review.getListing().getUuid(), AuthUtils.extractUserId());
+        reviewRepository.delete(review);
     }
 
     @Override

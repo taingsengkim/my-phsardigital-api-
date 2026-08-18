@@ -36,6 +36,17 @@ public class ListingController {
         return listingService.getAllListingsByStatus(status, pageNumber, pageSize);
     }
 
+    /**
+     * The caller's own listings in any status. A literal segment, so it takes
+     * precedence over {@code /{uuid}} below and "me" is never parsed as a UUID.
+     */
+    @GetMapping("/me")
+    public Page<ListingResponse> getMine(@RequestParam(required = false) String status,
+                                         @RequestParam(defaultValue = "0") Integer pageNumber,
+                                         @RequestParam(defaultValue = "20") Integer pageSize) {
+        return listingService.getMyListings(status, pageNumber, pageSize);
+    }
+
     @GetMapping("/{uuid}")
     public ListingResponse getOne(@PathVariable UUID uuid) {
         return listingService.getListing(uuid);

@@ -21,6 +21,13 @@ public interface ReviewService {
 
     void deleteReview(UUID reviewUuid);
 
+    /**
+     * Removes a review as a moderator, without the author check {@link #deleteReview}
+     * applies. Reviews are publicly readable, so an abusive one has to be removable by
+     * somebody other than the person who wrote it.
+     */
+    void deleteReviewAsAdmin(UUID reviewUuid);
+
     Page<ReviewResponse> getSellerReviews(Pageable pageable);
 
     /**

@@ -52,6 +52,9 @@ public class SecurityConfig {
         }));
         http.authorizeHttpRequests(auth ->
                 auth.requestMatchers(HttpMethod.GET,"/api/v1/categories","/api/v1/categories/**").permitAll()
+                        // Before the open rule below, which would otherwise swallow it
+                        // and hand the controller an anonymous request.
+                        .requestMatchers(HttpMethod.GET,"/api/v1/listings/me").authenticated()
                         .requestMatchers(HttpMethod.GET,"/api/v1/listings", "/api/v1/listings/**").permitAll()
                         // A shop page is browsed before signing in, so its reviews are
                         // open. Ordered before that rule: /reviews/sellers/me answers
@@ -77,6 +80,9 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/carts/**").hasAnyRole("USER", "ADMIN")
                         .requestMatchers("/api/v1/admin/users/**").hasRole("ADMIN")
                         .requestMatchers("/api/v1/admin/seller-applications/**").hasRole("ADMIN")
+                        // Catch-all, so an admin endpoint added later is closed by
+                        // default instead of falling through to authenticated().
+                        .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/v1/user-profiles/**").authenticated()
                         .requestMatchers("/api/v1/seller-applications/**").hasAnyRole("USER", "ADMIN")
                         // The pricing page is read before subscribing, so it cannot

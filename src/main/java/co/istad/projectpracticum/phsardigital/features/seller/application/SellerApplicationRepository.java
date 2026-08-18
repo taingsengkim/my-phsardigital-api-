@@ -24,4 +24,6 @@ public interface SellerApplicationRepository extends JpaRepository<SellerApplica
     boolean existsByApplicantIdAndStatus(String applicantId, ApplicationStatus status);
 
     Page<SellerApplication> findByStatus(ApplicationStatus status, Pageable pageable);
+
+    long countByStatus(ApplicationStatus status);
 }

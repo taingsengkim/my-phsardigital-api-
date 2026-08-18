@@ -11,22 +11,32 @@ import java.util.UUID;
 
 public interface ListingService {
     /**
-     * Retrieves a paginated list of listings filtered by status.
+     * Retrieves a paginated list of every seller's listings in one status.
      *
-     * <p><b>Known gap:</b> this method currently has no ownership check. Any caller
-     * can pass any status (e.g. {@code "DRAFT"}) and see listings regardless of
-     * who created them. Once seller authentication (Keycloak) is in place, this
-     * should be restricted so that non-{@code ACTIVE} statuses are only visible
-     * to the listing's own seller (or an admin).
+     * <p>Admin-only — this is the moderation view. It was previously open to any
+     * caller, which meant {@code ?status=DRAFT} published every seller's unfinished
+     * work to anonymous visitors; sellers now use {@link #getMyListings} instead.
      *
      * @param status     the {@link ListingStatus} name to filter by (case-insensitive
      *                    string, e.g. {@code "ACTIVE"}, {@code "DRAFT"}); invalid
-     *                    values should result in a 400 Bad Request
+     *                    values result in a 400 Bad Request
      * @param pageNumber zero-based page index
      * @param pageSize   number of listings per page
      * @return a page of listings matching the given status
+     * @throws org.springframework.web.server.ResponseStatusException with
+     *         {@code 403 FORBIDDEN} when the caller is not an admin
      */
     Page<ListingResponse> getAllListingsByStatus(String status,Integer pageNumber, Integer pageSize);
+
+    /**
+     * Retrieves the calling seller's own listings, in any status.
+     *
+     * @param status     optional {@link ListingStatus} name to filter by; omit for all
+     * @param pageNumber zero-based page index
+     * @param pageSize   number of listings per page
+     * @return a page of the caller's listings
+     */
+    Page<ListingResponse> getMyListings(String status, Integer pageNumber, Integer pageSize);
     /**
      * Retrieves a paginated list of publicly visible listings.
      *
@@ -41,15 +51,16 @@ public interface ListingService {
     /**
      * Retrieves a single listing by its UUID.
      *
-     * <p><b>Known gap:</b> this does not currently check listing status before
-     * returning. A direct link to a {@code DRAFT} listing's UUID will currently
-     * succeed for any caller, which leaks unpublished listings. Should be gated
-     * once seller/admin auth exists.
+     * <p>{@code ACTIVE} and {@code SOLD_OUT} are public. Everything else — a draft, an
+     * archived listing, one an admin has suspended — is visible only to its own seller
+     * or to an admin, and answers 404 to anybody else: a suspended listing that still
+     * loads from a direct link has not really been taken down.
      *
      * @param uuid the listing's unique identifier
      * @return the matching listing
      * @throws org.springframework.web.server.ResponseStatusException with
-     *         {@code 404 NOT_FOUND} if no listing exists with the given UUID
+     *         {@code 404 NOT_FOUND} if no listing exists with the given UUID, or the
+     *         caller may not see it
      */
     ListingResponse getListing(UUID uuid);
 

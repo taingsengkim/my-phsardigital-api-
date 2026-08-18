@@ -43,18 +43,49 @@ public class ListingServiceImpl implements ListingService{
     private final SubscriptionService subscriptionService;
     private final FileUploadService fileUploadService;
 
+    /**
+     * The moderation view: every seller's listings in one status.
+     *
+     * <p>Admin-only, and checked here rather than in {@code SecurityConfig} because
+     * the restriction is on a query parameter, not a path — the URL is the same public
+     * {@code /api/v1/listings} either way. Without this the endpoint answered
+     * {@code ?status=DRAFT} to anonymous callers, publishing every seller's unfinished
+     * work; sellers reach their own through {@link #getMyListings} instead.
+     */
     @Override
     public Page<ListingResponse> getAllListingsByStatus(String status, Integer pageNumber, Integer pageSize) {
-        ListingStatus listingStatus;
+        if (!AuthUtils.hasRole("ADMIN")) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Filtering listings by status is an administrator view. "
+                            + "Use GET /api/v1/listings/me for your own listings.");
+        }
+        Pageable pageable = PageRequest.of(pageNumber, pageSize, Sort.by(Sort.Direction.DESC,("lastModifiedAt")));
+        Page<Listing> listingPage = listingRepository.findByStatus(parseStatus(status), pageable);
+        return listingPage.map(listingMapper::toResponse);
+    }
+
+    /**
+     * The caller's own listings, whatever state they are in — the legitimate half of
+     * what {@code ?status=} used to serve.
+     */
+    @Override
+    public Page<ListingResponse> getMyListings(String status, Integer pageNumber, Integer pageSize) {
+        String sellerId = AuthUtils.extractUserId();
+        Pageable pageable = PageRequest.of(pageNumber, pageSize, Sort.by(Sort.Direction.DESC,("lastModifiedAt")));
+
+        Page<Listing> listingPage = (status == null || status.isBlank())
+                ? listingRepository.findBySellerProfile_SellerId(sellerId, pageable)
+                : listingRepository.findBySellerProfile_SellerIdAndStatus(sellerId, parseStatus(status), pageable);
+        return listingPage.map(listingMapper::toResponse);
+    }
+
+    private ListingStatus parseStatus(String status) {
         try {
-            listingStatus = ListingStatus.valueOf(status.toUpperCase());
+            return ListingStatus.valueOf(status.toUpperCase());
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, "Invalid listing status: " + status);
         }
-        Pageable pageable = PageRequest.of(pageNumber, pageSize, Sort.by(Sort.Direction.DESC,("lastModifiedAt")));
-        Page<Listing> listingPage = listingRepository.findByStatus(listingStatus, pageable);
-        return listingPage.map(listingMapper::toResponse);
     }
 
     @Override
@@ -64,11 +95,36 @@ public class ListingServiceImpl implements ListingService{
         return listingPage.map(listingMapper::toResponse);
     }
 
+    /** The statuses a listing is browsable in. Everything else is private to its shop. */
+    private static final Set<ListingStatus> PUBLICLY_VISIBLE =
+            EnumSet.of(ListingStatus.ACTIVE, ListingStatus.SOLD_OUT);
+
     @Override
     public ListingResponse getListing(UUID uuid) {
         Listing listing = listingRepository.findByUuidWithDetails(uuid)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found"));
+
+        if (!PUBLICLY_VISIBLE.contains(listing.getStatus()) && !maySeePrivately(listing)) {
+            // 404 rather than 403: a draft nobody may read should not have its
+            // existence confirmed either.
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found");
+        }
         return listingMapper.toResponse(listing);
+    }
+
+    /**
+     * Whether the caller is the listing's own seller or an admin. Both checks are
+     * anonymous-safe — {@code hasRole} answers false rather than throwing, and the
+     * owner comparison is only reached for a caller who has a token.
+     */
+    private boolean maySeePrivately(Listing listing) {
+        if (AuthUtils.hasRole("ADMIN")) {
+            return true;
+        }
+        if (!AuthUtils.isAuthenticated()) {
+            return false;
+        }
+        return listing.getSellerProfile().getSellerId().equals(AuthUtils.extractUserId());
     }
 
     @Override
@@ -136,6 +192,7 @@ public class ListingServiceImpl implements ListingService{
         if (!listing.getSellerProfile().getSellerId().equals(currentSellerId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not allowed to update this listing.");
         }
+        requireNotSuspended(listing);
         if (request.categoryUuid() != null) {
             Category category = categoryRepository.findById(request.categoryUuid())
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Category not found"));
@@ -159,6 +216,10 @@ public class ListingServiceImpl implements ListingService{
             listing.setStockQty(request.stockQty());
         }
         if (request.status() != null) {
+            if (request.status() == ListingStatus.SUSPENDED) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Only an admin can suspend a listing.");
+            }
             // Archived listings do not count against the plan, so bringing one back is
             // the same act as publishing a new one. Without this check a seller could
             // archive their way under the limit and then un-archive everything, ending
@@ -185,6 +246,7 @@ public class ListingServiceImpl implements ListingService{
         if (!listing.getSellerProfile().getSellerId().equals(currentSellerId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not allowed to update this listing.");
         }
+        requireNotSuspended(listing);
         FileUpload newFile = fileUploadService.requireOwnedFile(objectName, currentSellerId);
         FileUpload oldFile = listing.getThumbnailFile();
         listing.setThumbnailFile(newFile);
@@ -203,6 +265,7 @@ public class ListingServiceImpl implements ListingService{
         if (!listing.getSellerProfile().getSellerId().equals(currentSellerId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not allowed to update this listing.");
         }
+        requireNotSuspended(listing);
         FileUpload file = fileUploadService.requireOwnedFile(request.objectName(), currentSellerId);
         ListingImage image = new ListingImage();
         image.setFile(file);
@@ -224,6 +287,7 @@ public class ListingServiceImpl implements ListingService{
         if (!listing.getSellerProfile().getSellerId().equals(currentSellerId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not allowed to update this listing.");
         }
+        requireNotSuspended(listing);
         ListingImage toRemove = listing.getImages().stream()
                 .filter(img -> img.getUuid().equals(imageUuid))
                 .findFirst()
@@ -234,6 +298,19 @@ public class ListingServiceImpl implements ListingService{
         listingRepository.save(listing);
         fileUploadService.delete(objectName);
     }
+    /**
+     * A suspended listing is frozen for its seller: not editable, not re-photographed,
+     * not deletable. Deleting especially — that would let a seller erase the listing an
+     * admin took down, along with the reason it was taken down.
+     */
+    private void requireNotSuspended(Listing listing) {
+        if (listing.getStatus() == ListingStatus.SUSPENDED) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "This listing has been suspended by an administrator and cannot be changed. "
+                            + "Reason: " + listing.getModerationReason());
+        }
+    }
+
     /**
      * Resolves the client-supplied object names, confirming this seller uploaded
      * each one. Looking them up without that check let a seller attach another
@@ -280,6 +357,7 @@ public class ListingServiceImpl implements ListingService{
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "You are not allowed to delete this listing.");
         }
+        requireNotSuspended(listing);
 
         // 3. Collect file names
         List<String> fileNamesToDelete = new ArrayList<>();

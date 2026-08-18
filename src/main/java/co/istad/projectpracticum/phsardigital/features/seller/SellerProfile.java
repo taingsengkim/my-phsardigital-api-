@@ -98,6 +98,19 @@ public class SellerProfile extends BasedEntity {
     @Column(name = "rejection_note", columnDefinition = "TEXT")
     private String rejectionNote;
 
+    // Suspension, kept apart from reviewedBy/reviewedAt above: those record the
+    // application decision that created this shop, and overwriting them on a
+    // suspension would lose who approved it in the first place.
+
+    @Column(name = "suspended_by")
+    private String suspendedBy;
+
+    @Column(name = "suspended_at")
+    private LocalDateTime suspendedAt;
+
+    @Column(name = "suspension_reason", columnDefinition = "TEXT")
+    private String suspensionReason;
+
     @OneToMany(mappedBy = "sellerProfile")
     private List<Listing> listings;
 }
