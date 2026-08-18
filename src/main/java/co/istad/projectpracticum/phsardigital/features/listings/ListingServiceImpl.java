@@ -91,7 +91,8 @@ public class ListingServiceImpl implements ListingService{
     @Override
     public Page<ListingResponse> getAll(Integer pageNumber, Integer pageSize) {
         Pageable pageable = PageRequest.of(pageNumber, pageSize, Sort.by(Sort.Direction.DESC,("lastModifiedAt")));
-        Page<Listing> listingPage = listingRepository.findByStatus(ListingStatus.ACTIVE,pageable);
+        Page<Listing> listingPage =
+                listingRepository.findByStatusAndSellerProfile_IsActiveTrue(ListingStatus.ACTIVE, pageable);
         return listingPage.map(listingMapper::toResponse);
     }
 
@@ -104,7 +105,12 @@ public class ListingServiceImpl implements ListingService{
         Listing listing = listingRepository.findByUuidWithDetails(uuid)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found"));
 
-        if (!PUBLICLY_VISIBLE.contains(listing.getStatus()) && !maySeePrivately(listing)) {
+        // The shop has to be trading too, or a suspended seller's products stay
+        // reachable by direct link even though they are gone from search.
+        boolean publiclyVisible = PUBLICLY_VISIBLE.contains(listing.getStatus())
+                && Boolean.TRUE.equals(listing.getSellerProfile().getIsActive());
+
+        if (!publiclyVisible && !maySeePrivately(listing)) {
             // 404 rather than 403: a draft nobody may read should not have its
             // existence confirmed either.
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found");

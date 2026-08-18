@@ -17,6 +17,8 @@ public interface PurchaseRepository extends JpaRepository<Purchase, UUID> {
 
     Page<Purchase> findBySellerProfile_SellerId(String sellerId, Pageable pageable);
 
+    Page<Purchase> findBySellerProfile_SellerIdAndStatus(String sellerId, PurchaseStatus status, Pageable pageable);
+
     long countByStatus(PurchaseStatus status);
 
     /**

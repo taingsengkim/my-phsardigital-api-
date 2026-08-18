@@ -45,6 +45,12 @@ public class SellerProfileServiceImpl implements SellerProfileService{
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Shop not found"));
 
+        // A suspended shop keeps its page — the profile already reports isActive, so a
+        // client can say why it is empty — but stops offering anything for sale.
+        if (!Boolean.TRUE.equals(seller.getIsActive())) {
+            return Page.empty(pageable);
+        }
+
         Page<Listing> listings = listingRepository.findBySellerProfileAndStatus(
                 seller, ListingStatus.ACTIVE, pageable);
         return listings.map(listingMapper::toResponse);

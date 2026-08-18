@@ -8,6 +8,7 @@ import co.istad.projectpracticum.phsardigital.features.listings.Listing;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingRepository;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingStatus;
 import co.istad.projectpracticum.phsardigital.features.purchases.dto.*;
+import co.istad.projectpracticum.phsardigital.features.seller.SellerAccessGuard;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -17,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -28,11 +30,17 @@ public class PurchaseServiceImpl implements PurchaseService {
     private final CartRepository cartRepository;
     private final ListingRepository listingRepository;
     private final PurchaseMapper purchaseMapper;
+    private final SellerAccessGuard sellerAccessGuard;
 
     @Override
     @Transactional
     public PurchaseResponse checkout(String sellerId, CheckoutRequest request) {
         String buyerId = AuthUtils.extractUserId();
+
+        // Suspending a shop stops it selling, not just posting. Without this the
+        // storefront stayed open: the listings are still ACTIVE, so only the shop's
+        // own flag says it may not trade.
+        sellerAccessGuard.requireActiveSeller(sellerId);
 
         Cart cart = cartRepository
                 .findByBuyerIdAndSellerProfile_SellerId(buyerId, sellerId)
@@ -94,8 +102,8 @@ public class PurchaseServiceImpl implements PurchaseService {
                     "Only PENDING orders can be confirmed.");
         }
 
-        for (PurchaseItem item : purchase.getItems()) {
-            Listing listing = item.getListing();
+        for (PurchaseItem item : lockOrdered(purchase)) {
+            Listing listing = lockListing(item);
             if (listing.getStockQty() < item.getQuantity()) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
                         "Not enough stock to confirm: " + listing.getTitle());
@@ -143,8 +151,8 @@ public class PurchaseServiceImpl implements PurchaseService {
 
         // give stock back only if it was actually reserved
         if (purchase.getStatus() == PurchaseStatus.CONFIRMED) {
-            for (PurchaseItem item : purchase.getItems()) {
-                Listing listing = item.getListing();
+            for (PurchaseItem item : lockOrdered(purchase)) {
+                Listing listing = lockListing(item);
                 listing.setStockQty(listing.getStockQty() + item.getQuantity());
                 listing.setSold(listing.getSold() - item.getQuantity());
                 if (listing.getStatus() == ListingStatus.SOLD_OUT && listing.getStockQty() > 0) {
@@ -177,11 +185,38 @@ public class PurchaseServiceImpl implements PurchaseService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<PurchaseResponse> findSellerOrders(int pageNumber, int pageSize) {
+    public Page<PurchaseResponse> findSellerOrders(PurchaseStatus status, int pageNumber, int pageSize) {
         String sellerId = AuthUtils.extractUserId();
-        return purchaseRepository
-                .findBySellerProfile_SellerId(sellerId, PageRequest.of(pageNumber, pageSize))
-                .map(purchaseMapper::toResponse);
+        PageRequest pageable = PageRequest.of(pageNumber, pageSize);
+
+        // Unfiltered is the order history; filtered to PENDING is the work queue. The
+        // two answer different questions and the seller needs the second one far more.
+        Page<Purchase> orders = status == null
+                ? purchaseRepository.findBySellerProfile_SellerId(sellerId, pageable)
+                : purchaseRepository.findBySellerProfile_SellerIdAndStatus(sellerId, status, pageable);
+        return orders.map(purchaseMapper::toResponse);
+    }
+
+    /**
+     * The order's items, sorted by listing id, so every transaction takes its row
+     * locks in the same sequence. Two orders sharing two listings would otherwise be
+     * able to grab one each and wait forever on the other.
+     */
+    private List<PurchaseItem> lockOrdered(Purchase purchase) {
+        return purchase.getItems().stream()
+                .sorted(Comparator.comparing(item -> item.getListing().getUuid()))
+                .toList();
+    }
+
+    /**
+     * Re-reads the listing {@code FOR UPDATE}. The instance hanging off the item was
+     * loaded without a lock, so checking stock on it decides nothing.
+     */
+    private Listing lockListing(PurchaseItem item) {
+        UUID listingUuid = item.getListing().getUuid();
+        return listingRepository.findByUuidForUpdate(listingUuid)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Listing no longer exists: " + item.getListing().getTitle()));
     }
 
     private Purchase getForSeller(UUID uuid) {

@@ -57,6 +57,9 @@ public abstract class SellerProfileMapper {
                 profile.getLongitude(),
                 profile.getGoogleMapUrl(),
                 profile.getIsActive(),
+                profile.getPhoneNumber(),
+                profile.getBiography(),
+                profile.getSocialLink(),
                 round(averageRating),
                 reviewCount
         );

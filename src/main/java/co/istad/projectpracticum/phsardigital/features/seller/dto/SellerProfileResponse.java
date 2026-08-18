@@ -1,6 +1,7 @@
 package co.istad.projectpracticum.phsardigital.features.seller.dto;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * @param averageRating the shop's star rating to one decimal place, or null when it
@@ -21,6 +22,9 @@ public record SellerProfileResponse(
         BigDecimal longitude,
         String googleMapUrl,
         Boolean isActive,
+        String phoneNumber,
+        String biography,
+        List<String> socialLink,
         Double averageRating,
         Long reviewCount
 ) {

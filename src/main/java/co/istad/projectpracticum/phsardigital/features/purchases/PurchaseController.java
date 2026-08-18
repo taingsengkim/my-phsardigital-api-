@@ -40,9 +40,10 @@ public class PurchaseController {
     // ---> seller
     @GetMapping("/seller/orders")
     public Page<PurchaseResponse> sellerOrders(
+            @RequestParam(required = false) PurchaseStatus status,
             @RequestParam(defaultValue = "0") int pageNumber,
             @RequestParam(defaultValue = "20") int pageSize) {
-        return purchaseService.findSellerOrders(pageNumber, pageSize);
+        return purchaseService.findSellerOrders(status, pageNumber, pageSize);
     }
 
     @PatchMapping("/{uuid}/confirm")

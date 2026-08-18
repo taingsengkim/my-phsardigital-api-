@@ -15,8 +15,13 @@ public interface PurchaseService {
 
     PurchaseResponse findMyPurchaseByUuid(UUID uuid);
 
-    /** Seller: orders on my shop. */
-    Page<PurchaseResponse> findSellerOrders(int pageNumber, int pageSize);
+    /**
+     * Seller: orders on my shop.
+     *
+     * @param status optional filter; pass {@code PENDING} for the orders awaiting a
+     *               decision, or null for the full history
+     */
+    Page<PurchaseResponse> findSellerOrders(PurchaseStatus status, int pageNumber, int pageSize);
 
     /** Seller confirms -> DECREMENTS STOCK. */
     PurchaseResponse confirm(UUID uuid);

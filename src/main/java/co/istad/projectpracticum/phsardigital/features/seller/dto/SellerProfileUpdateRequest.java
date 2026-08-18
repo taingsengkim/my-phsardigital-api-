@@ -5,6 +5,7 @@ import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * Every field is optional: this backs a PATCH, and the mapper ignores nulls so an
@@ -46,6 +47,15 @@ public record SellerProfileUpdateRequest(
         BigDecimal longitude,
 
         @Size(max = 2000, message = "Google Maps URL must not exceed 2000 characters")
-        String googleMapUrl
+        String googleMapUrl,
+
+        @Size(max = 20, message = "Phone number must not exceed 20 characters")
+        String phoneNumber,
+
+        @Size(max = 1000, message = "Biography must not exceed 1000 characters")
+        String biography,
+
+        @Size(max = 10, message = "A shop may list at most 10 social links")
+        List<@Size(max = 500, message = "Each social link must not exceed 500 characters") String> socialLink
 ) {
 }
