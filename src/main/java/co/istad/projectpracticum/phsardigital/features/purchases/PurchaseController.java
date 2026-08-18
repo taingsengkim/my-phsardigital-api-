@@ -27,9 +27,10 @@ public class PurchaseController {
 
     @GetMapping
     public Page<PurchaseResponse> myPurchases(
+            @RequestParam(required = false) PurchaseStatus status,
             @RequestParam(defaultValue = "0") int pageNumber,
             @RequestParam(defaultValue = "20") int pageSize) {
-        return purchaseService.findMyPurchases(pageNumber, pageSize);
+        return purchaseService.findMyPurchases(status, pageNumber, pageSize);
     }
 
     @GetMapping("/{uuid}")

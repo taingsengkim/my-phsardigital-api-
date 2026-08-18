@@ -84,6 +84,7 @@ public class SecurityConfig {
                         // default instead of falling through to authenticated().
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/v1/user-profiles/**").authenticated()
+                        .requestMatchers("/api/v1/addresses/**").authenticated()
                         .requestMatchers("/api/v1/seller-applications/**").hasAnyRole("USER", "ADMIN")
                         // The pricing page is read before subscribing, so it cannot
                         // require a subscriber. Everything else here is per-seller.

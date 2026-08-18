@@ -1,6 +1,8 @@
 package co.istad.projectpracticum.phsardigital.features.purchases;
 
 import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
+import co.istad.projectpracticum.phsardigital.features.address.Address;
+import co.istad.projectpracticum.phsardigital.features.address.AddressService;
 import co.istad.projectpracticum.phsardigital.features.cart.Cart;
 import co.istad.projectpracticum.phsardigital.features.cart.CartItem;
 import co.istad.projectpracticum.phsardigital.features.cart.CartRepository;
@@ -21,6 +23,8 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -31,6 +35,7 @@ public class PurchaseServiceImpl implements PurchaseService {
     private final ListingRepository listingRepository;
     private final PurchaseMapper purchaseMapper;
     private final SellerAccessGuard sellerAccessGuard;
+    private final AddressService addressService;
 
     @Override
     @Transactional
@@ -54,7 +59,7 @@ public class PurchaseServiceImpl implements PurchaseService {
         purchase.setBuyerId(buyerId);
         purchase.setSellerProfile(cart.getSellerProfile());
         purchase.setStatus(PurchaseStatus.PENDING);
-        purchase.setShippingAddress(request.shippingAddress());
+        applyDelivery(purchase, request, buyerId);
         purchase.setNote(request.note());
 
         double total = 0.0;
@@ -168,10 +173,14 @@ public class PurchaseServiceImpl implements PurchaseService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<PurchaseResponse> findMyPurchases(int pageNumber, int pageSize) {
+    public Page<PurchaseResponse> findMyPurchases(PurchaseStatus status, int pageNumber, int pageSize) {
         String buyerId = AuthUtils.extractUserId();
-        return purchaseRepository.findByBuyerId(buyerId, PageRequest.of(pageNumber, pageSize))
-                .map(purchaseMapper::toResponse)   ;
+        PageRequest pageable = PageRequest.of(pageNumber, pageSize);
+
+        Page<Purchase> purchases = status == null
+                ? purchaseRepository.findByBuyerId(buyerId, pageable)
+                : purchaseRepository.findByBuyerIdAndStatus(buyerId, status, pageable);
+        return purchases.map(purchaseMapper::toResponse);
     }
 
     @Override
@@ -195,6 +204,38 @@ public class PurchaseServiceImpl implements PurchaseService {
                 ? purchaseRepository.findBySellerProfile_SellerId(sellerId, pageable)
                 : purchaseRepository.findBySellerProfile_SellerIdAndStatus(sellerId, status, pageable);
         return orders.map(purchaseMapper::toResponse);
+    }
+
+    /**
+     * Copies the delivery details onto the order, from a saved address when one was
+     * named and from the free-text field otherwise.
+     *
+     * <p>Requiring one or the other is the point: {@code shippingAddress} carried no
+     * validation at all, so an order could be placed with none and reach a seller who
+     * had no way to deliver it.
+     */
+    private void applyDelivery(Purchase purchase, CheckoutRequest request, String buyerId) {
+        if (request.addressId() != null) {
+            Address address = addressService.requireOwned(request.addressId(), buyerId);
+            purchase.setShippingAddress(format(address));
+            purchase.setRecipientName(address.getRecipient());
+            purchase.setRecipientPhone(address.getPhone());
+            return;
+        }
+
+        if (request.shippingAddress() == null || request.shippingAddress().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A delivery address is required. Send addressId for a saved address, "
+                            + "or shippingAddress for a one-off.");
+        }
+        purchase.setShippingAddress(request.shippingAddress());
+    }
+
+    /** Flattens a saved address into the single line the order stores. */
+    private String format(Address address) {
+        return Stream.of(address.getLine1(), address.getLine2(), address.getCity(), address.getProvince())
+                .filter(part -> part != null && !part.isBlank())
+                .collect(Collectors.joining(", "));
     }
 
     /**

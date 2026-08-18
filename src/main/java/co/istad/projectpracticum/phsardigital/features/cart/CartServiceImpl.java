@@ -5,6 +5,7 @@ import co.istad.projectpracticum.phsardigital.features.cart.dto.*;
 import co.istad.projectpracticum.phsardigital.features.listings.Listing;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingRepository;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingStatus;
+import co.istad.projectpracticum.phsardigital.features.seller.SellerAccessGuard;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -19,6 +20,7 @@ public class CartServiceImpl implements CartService {
 
     private final CartRepository cartRepository;
     private final ListingRepository listingRepository;
+    private final SellerAccessGuard sellerAccessGuard;
 
     @Override
     public List<CartResponse> getMyCarts() {
@@ -49,6 +51,9 @@ public class CartServiceImpl implements CartService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Listing is not available: " + listing.getTitle());
         }
         String sellerId = listing.getSellerProfile().getSellerId();
+        // Checkout refuses a suspended shop anyway; refusing here too means the buyer
+        // finds out before they have built a basket they cannot buy.
+        sellerAccessGuard.requireActiveSeller(sellerId);
         // find this buyer's cart for THIS shop, or create one
         Cart cart = cartRepository
                 .findByBuyerIdAndSellerProfile_SellerId(buyerId, sellerId)

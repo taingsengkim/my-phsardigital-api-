@@ -26,11 +26,19 @@ public class PurchaseMapper {
         // same page are served from the persistence context.
         UserProfile buyer = userProfileRepository.findById(p.getBuyerId()).orElse(null);
 
+        // The recipient copied off the delivery address wins over the account holder:
+        // people order to a parent's or a colleague's address, and it is the recipient
+        // the courier has to ask for.
+        String name = p.getRecipientName() != null ? p.getRecipientName()
+                : (buyer == null ? null : buyer.getFullName());
+        String phone = p.getRecipientPhone() != null ? p.getRecipientPhone()
+                : (buyer == null ? null : buyer.getPhone());
+
         return new PurchaseResponse(
                 p.getUuid(),
                 p.getBuyerId(),
-                buyer == null ? null : buyer.getFullName(),
-                buyer == null ? null : buyer.getPhone(),
+                name,
+                phone,
                 p.getSellerProfile().getSellerId(),
                 p.getSellerProfile().getBusinessName(),
                 p.getTotalPrice(),

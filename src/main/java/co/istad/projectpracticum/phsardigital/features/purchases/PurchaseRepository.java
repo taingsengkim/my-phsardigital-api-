@@ -21,6 +21,16 @@ public interface PurchaseRepository extends JpaRepository<Purchase, UUID> {
 
     long countByStatus(PurchaseStatus status);
 
+    Page<Purchase> findByBuyerIdAndStatus(String buyerId, PurchaseStatus status, Pageable pageable);
+
+    /**
+     * Whether this buyer has ever completed an order with this shop — the test for
+     * whether they may review it.
+     */
+    boolean existsByBuyerIdAndSellerProfile_SellerIdAndStatus(String buyerId,
+                                                             String sellerId,
+                                                             PurchaseStatus status);
+
     /**
      * Merchandise value over orders in one status — what buyers paid sellers, not
      * platform earnings.

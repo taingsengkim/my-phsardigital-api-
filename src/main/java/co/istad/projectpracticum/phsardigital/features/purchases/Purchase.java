@@ -35,8 +35,19 @@ public class Purchase extends BasedEntity {
     @Column(nullable = false, length = 20)
     private PurchaseStatus status = PurchaseStatus.PENDING;
 
+    /**
+     * Delivery details copied at checkout, never a reference to the saved address they
+     * came from. The same reasoning as {@code PurchaseItem.unitPrice}: editing or
+     * deleting an address later must not rewrite where a past order was sent.
+     */
     @Column(columnDefinition = "TEXT")
     private String shippingAddress;
+
+    @Column(name = "recipient_name", length = 255)
+    private String recipientName;
+
+    @Column(name = "recipient_phone", length = 30)
+    private String recipientPhone;
 
     @Column(columnDefinition = "TEXT")
     private String note;

@@ -7,6 +7,8 @@ import co.istad.projectpracticum.phsardigital.features.file.FileUploadService;
 import co.istad.projectpracticum.phsardigital.features.listings.Listing;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingRepository;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingStatus;
+import co.istad.projectpracticum.phsardigital.features.purchases.PurchaseRepository;
+import co.istad.projectpracticum.phsardigital.features.purchases.PurchaseStatus;
 import co.istad.projectpracticum.phsardigital.features.review.dto.ReviewReplyRequest;
 import co.istad.projectpracticum.phsardigital.features.review.dto.ReviewReplyResponse;
 import co.istad.projectpracticum.phsardigital.features.review.dto.ReviewRequest;
@@ -37,6 +39,9 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ReviewServiceImpl implements ReviewService {
 
+    /** The order state that earns a buyer the right to review the shop. */
+    private static final PurchaseStatus QUALIFYING_PURCHASE = PurchaseStatus.COMPLETED;
+
     private final ReviewRepository reviewRepository;
     private final ReviewReplyRepository reviewReplyRepository;
     private final ListingRepository listingRepository;
@@ -45,6 +50,7 @@ public class ReviewServiceImpl implements ReviewService {
     private final FileUploadService fileUploadService;
     private final ReviewMapper reviewMapper;
     private final ReviewReplyMapper replyMapper;
+    private final PurchaseRepository purchaseRepository;
 
     @Override
     public Page<ReviewResponse> getReviewsForListing(UUID listingUuid, Pageable pageable) {
@@ -77,7 +83,10 @@ public class ReviewServiceImpl implements ReviewService {
                     "You have already reviewed this listing");
         }
 
-        // 5. Build review entity
+        // 5. Must have actually dealt with this shop
+        requireHasBoughtFrom(userId, listing.getSellerProfile().getSellerId());
+
+        // 6. Build review entity
         Review review = new Review();
         review.setListing(listing);
         review.setBuyer(buyer);
@@ -85,7 +94,7 @@ public class ReviewServiceImpl implements ReviewService {
         review.setRating(request.rating());
         review.setComment(request.comment());
 
-        // 6. Handle photo if provided
+        // 7. Handle photo if provided
         if (request.photoObjectName() != null) {
             review.setPhoto(fileUploadService.requireOwnedFile(request.photoObjectName(), userId));
         }
@@ -148,6 +157,28 @@ public class ReviewServiceImpl implements ReviewService {
         Listing listing = review.getListing();
         reviewRepository.delete(review);
 //        updateListingRating(listing);
+    }
+
+    /**
+     * Insists the reviewer has actually dealt with this shop.
+     *
+     * <p>Judged per shop rather than per listing: having bought from a seller earns
+     * you a say on what they sell, and tying it to the exact listing would block the
+     * common case of buying one size and reviewing the product.
+     *
+     * <p>{@code COMPLETED} rather than any order at all, because it is the only
+     * terminal state — {@code cancel} still accepts a {@code PENDING} or
+     * {@code CONFIRMED} order, so anything looser would let someone order, review, and
+     * cancel for a free opinion.
+     */
+    private void requireHasBoughtFrom(String buyerId, String sellerId) {
+        boolean bought = purchaseRepository.existsByBuyerIdAndSellerProfile_SellerIdAndStatus(
+                buyerId, sellerId, QUALIFYING_PURCHASE);
+        if (!bought) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "You can only review a shop you have bought from. "
+                            + "This applies once an order from this shop is completed.");
+        }
     }
 
     @Override

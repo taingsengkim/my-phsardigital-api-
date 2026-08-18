@@ -11,7 +11,12 @@ public interface PurchaseService {
     /** Buyer checks out ONE shop's cart. Snapshots price, creates PENDING order, empties that cart. */
     PurchaseResponse checkout(String sellerId, CheckoutRequest request);
 
-    Page<PurchaseResponse> findMyPurchases(int pageNumber, int pageSize);
+    /**
+     * Buyer: my orders.
+     *
+     * @param status optional filter; null for the full history
+     */
+    Page<PurchaseResponse> findMyPurchases(PurchaseStatus status, int pageNumber, int pageSize);
 
     PurchaseResponse findMyPurchaseByUuid(UUID uuid);
 
