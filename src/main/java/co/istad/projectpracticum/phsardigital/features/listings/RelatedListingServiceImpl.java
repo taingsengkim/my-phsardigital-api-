@@ -29,27 +29,21 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RelatedListingServiceImpl implements RelatedListingService {
 
-    /** How many suggestions a caller gets when they do not say. Two rows of four. */
     private static final int DEFAULT_LIMIT = 8;
 
-    /**
-     * The ceiling on {@code limit}. A related strip is a handful of cards; past this it
-     * is somebody paging the catalogue through an endpoint that fans out into three
-     * queries per call.
-     */
+    /** Each call fans out into three queries, so the strip is not a paging mechanism. */
     private static final int MAX_LIMIT = 24;
 
     /**
-     * Orders that count as a real purchase for the co-purchase signal. See
+     * Orders that count as a real purchase. See
      * {@link PurchaseRepository#rankBoughtTogetherWith} for why the other two are out.
      */
     private static final Set<PurchaseStatus> ACCEPTED_ORDERS =
             EnumSet.of(PurchaseStatus.CONFIRMED, PurchaseStatus.COMPLETED);
 
     /**
-     * The only status worth suggesting. {@code SOLD_OUT} is readable on its own page —
-     * a buyer following a link deserves to be told it is gone — but putting it on a
-     * strip is offering something that cannot be bought.
+     * {@code SOLD_OUT} is readable on its own page, but putting it on a strip is
+     * offering something that cannot be bought.
      */
     private static final ListingStatus BUYABLE = ListingStatus.ACTIVE;
 
@@ -80,11 +74,9 @@ public class RelatedListingServiceImpl implements RelatedListingService {
     }
 
     /**
-     * Adds one tier's candidates to the strip, keeping insertion order and skipping any
-     * listing an earlier tier already claimed.
-     *
-     * <p>The candidates are supplied lazily rather than passed in, so a strip already
-     * filled by co-purchases never runs the category and shop queries at all.
+     * Adds one tier's candidates, skipping any listing an earlier tier already claimed.
+     * Candidates are supplied lazily, so a strip already filled by co-purchases never
+     * runs the category and shop queries at all.
      */
     private void collect(Map<UUID, Suggestion> picked, int wanted,
                          RelatedReason reason, Supplier<List<Listing>> candidates) {
@@ -107,9 +99,8 @@ public class RelatedListingServiceImpl implements RelatedListingService {
         }
         List<UUID> uuids = ranked.stream().map(row -> (UUID) row[0]).toList();
 
-        // The ranking comes from order history, which remembers listings that have since
-        // been archived, sold out or taken down. Reloading drops those; the map then
-        // puts the survivors back into co-purchase order, which the reload lost.
+        // Order history remembers listings since archived, sold out or taken down, so
+        // the reload drops those; the map restores the co-purchase order it lost.
         Map<UUID, Listing> buyable = listingRepository.findBuyableByUuidIn(uuids, BUYABLE).stream()
                 .collect(Collectors.toMap(Listing::getUuid, Function.identity()));
         return uuids.stream().map(buyable::get).filter(Objects::nonNull).toList();
@@ -126,13 +117,11 @@ public class RelatedListingServiceImpl implements RelatedListingService {
     }
 
     /**
-     * Asks each tier for a full strip's worth rather than only the shortfall.
-     *
-     * <p>A later tier's rows may already be on the strip, and those duplicates are only
-     * discovered after the query has run. At most {@code wanted} listings can have been
-     * picked by then, so fetching {@code wanted} always leaves enough new ones to fill
-     * the remainder — asking for just the shortfall would return a short strip whenever
-     * the tiers overlap, which for two same-shop tiers is most of the time.
+     * A full strip's worth from every tier, not just the shortfall: duplicates are only
+     * discovered after the query runs, and at most {@code wanted} listings can already
+     * be picked, so this always leaves enough new rows to fill the remainder. Asking
+     * for the shortfall alone would come up short whenever tiers overlap — which, for
+     * the two same-shop tiers, is most of the time.
      */
     private Pageable topOf(int wanted) {
         return PageRequest.of(0, wanted);

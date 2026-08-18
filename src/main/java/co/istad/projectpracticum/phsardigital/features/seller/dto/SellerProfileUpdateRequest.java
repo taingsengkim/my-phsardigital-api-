@@ -2,6 +2,7 @@ package co.istad.projectpracticum.phsardigital.features.seller.dto;
 
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
@@ -12,6 +13,17 @@ import java.util.List;
  * absent field means "leave it alone" rather than "clear it".
  */
 public record SellerProfileUpdateRequest(
+        /**
+         * Optional, but not erasable. {@code @NotBlank} would reject the absent field
+         * too, and absent has to keep meaning "leave it alone"; {@code @Pattern} passes
+         * null through and only judges a value actually sent. Without it {@code ""}
+         * satisfied {@code @Size} and the mapper wrote it, leaving the shop nameless on
+         * the Top Sellers board and every listing card.
+         *
+         * <p>DOTALL so a name written across two lines is not read as blank.
+         */
+        @Pattern(regexp = ".*\\S.*", flags = Pattern.Flag.DOTALL,
+                message = "Business name must not be blank")
         @Size(max = 255, message = "Business name must not exceed 255 characters")
         String businessName,
 

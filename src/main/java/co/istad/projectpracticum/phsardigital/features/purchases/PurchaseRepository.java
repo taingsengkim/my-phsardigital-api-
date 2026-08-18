@@ -82,18 +82,14 @@ public interface PurchaseRepository extends JpaRepository<Purchase, UUID> {
                                    @Param("sellerIds") Collection<String> sellerIds);
 
     /**
-     * What else went into the basket alongside a listing, most frequent first — the
-     * strongest signal behind related products, because it is drawn from what buyers
-     * actually did rather than from how the catalogue happens to be filed.
-     *
-     * <p>Counts orders, not items, so one buyer ordering ten of something does not
-     * outweigh ten buyers ordering one each.
+     * What else went into the basket alongside a listing, most frequent first. Counts
+     * orders, not items, so one buyer ordering ten of something does not outweigh ten
+     * buyers ordering one each.
      *
      * <p>An order is always for a single shop, so everything this returns comes from
-     * the same shop as {@code listingUuid}. That is a property of the checkout, not a
-     * restriction imposed here: it ranks that shop's own catalogue by what genuinely
-     * sells alongside the product, and the marketplace-wide suggestions come from the
-     * category tier instead.
+     * the same shop as {@code listingUuid} — a property of the checkout, not a
+     * restriction imposed here. Marketplace-wide suggestions come from the category
+     * tier instead.
      *
      * @param statuses which orders count as real; a PENDING order is a request the
      *                 seller has not accepted and a CANCELLED one came to nothing, so

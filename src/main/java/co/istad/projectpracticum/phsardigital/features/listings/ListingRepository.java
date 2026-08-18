@@ -64,20 +64,17 @@ public interface ListingRepository extends JpaRepository<Listing, UUID> {
     @Query("SELECT l FROM Listing l WHERE l.uuid = :uuid")
     Optional<Listing> findByUuidForUpdate(@Param("uuid") UUID uuid);
 
-    // Related products. All three fetch the category, shop and thumbnail the card is
-    // drawn from — every one of those is a ManyToOne, so join-fetching them is safe to
-    // paginate, and without it a strip of eight cards is a strip of eight extra
-    // queries. The gallery is deliberately not fetched: it is a collection, so fetching
-    // it would force Hibernate to paginate in memory over the whole result.
+    // Related products. All three join-fetch the category, shop and thumbnail the card
+    // is drawn from — all ManyToOne, so safe to paginate. The gallery is deliberately
+    // left out: it is a collection, and fetching it would force Hibernate to paginate
+    // in memory over the whole result.
 
     /**
-     * Category peers a visitor could actually buy, nearest in price first.
+     * Category peers a visitor could actually buy, nearest in price first — a phone
+     * case beside a phone is a worse suggestion than another case, however new the
+     * phone is. Sales break the tie.
      *
-     * <p>Price proximity rather than recency: a phone case sitting beside a phone is a
-     * worse suggestion than another case, however new the phone is. Sales break the tie,
-     * so among equally-priced peers the shelf leans towards what moves.
-     *
-     * <p>{@code isActive} is checked for the same reason the browse query checks it —
+     * <p>{@code isActive} is checked for the same reason the browse query checks it:
      * suspending a shop leaves its listings {@code ACTIVE}, and a related strip would
      * quietly put them back in front of buyers.
      */
@@ -112,12 +109,9 @@ public interface ListingRepository extends JpaRepository<Listing, UUID> {
                                 Pageable pageable);
 
     /**
-     * Reloads listings named by an aggregate, keeping only the ones still on sale.
-     *
-     * <p>Order history remembers listings that have since been archived, sold out or
-     * taken down, so what comes back from a co-purchase ranking cannot be trusted to be
-     * buyable. The caller restores the ranking's order afterwards — this is a filter,
-     * not a sort.
+     * Reloads listings named by an aggregate, keeping only the ones still on sale — a
+     * co-purchase ranking is drawn from order history and cannot be trusted to name
+     * buyable products. A filter, not a sort: the caller restores the ranking's order.
      */
     @Query("SELECT l FROM Listing l "
             + "JOIN FETCH l.category "

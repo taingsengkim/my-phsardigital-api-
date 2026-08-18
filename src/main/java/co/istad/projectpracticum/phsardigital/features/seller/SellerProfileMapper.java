@@ -33,7 +33,8 @@ public abstract class SellerProfileMapper {
     }
 
     /**
-     * The same shop, with its star rating attached.
+     * The same shop, with its star rating attached. Still the public view: a shopper
+     * learns that a shop is inactive, never what it was accused of.
      *
      * @param averageRating raw average from the database, rounded here so every
      *                      caller answers the same 4.3 rather than one of them
@@ -43,6 +44,26 @@ public abstract class SellerProfileMapper {
     public SellerProfileResponse toResponseWithRating(SellerProfile profile,
                                                       Double averageRating,
                                                       Long reviewCount) {
+        return build(profile, averageRating, reviewCount, false);
+    }
+
+    /**
+     * The shop as its own seller sees it — the public view plus why it was suspended.
+     *
+     * <p>A separate method rather than a flag, so disclosing a moderation decision is
+     * something a caller asks for by name: a route that forgets to choose gets the
+     * public view.
+     */
+    public SellerProfileResponse toOwnerResponse(SellerProfile profile,
+                                                 Double averageRating,
+                                                 Long reviewCount) {
+        return build(profile, averageRating, reviewCount, true);
+    }
+
+    private SellerProfileResponse build(SellerProfile profile,
+                                        Double averageRating,
+                                        Long reviewCount,
+                                        boolean discloseSuspension) {
         return new SellerProfileResponse(
                 profile.getSellerId(),
                 profile.getBusinessName(),
@@ -61,7 +82,9 @@ public abstract class SellerProfileMapper {
                 profile.getBiography(),
                 profile.getSocialLink(),
                 round(averageRating),
-                reviewCount
+                reviewCount,
+                discloseSuspension ? profile.getSuspensionReason() : null,
+                discloseSuspension ? profile.getSuspendedAt() : null
         );
     }
 

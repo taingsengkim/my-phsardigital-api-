@@ -57,10 +57,8 @@ public class ListingController {
     }
 
     /**
-     * Products to show alongside this one. Public, exactly as far as the listing itself
+     * Products to show alongside this one. Public exactly as far as the listing itself
      * is — the service applies the same visibility rule before suggesting anything.
-     *
-     * @param limit how many cards to return; omit for the default
      */
     @GetMapping("/{uuid}/related")
     public List<RelatedListingResponse> getRelated(@PathVariable UUID uuid,

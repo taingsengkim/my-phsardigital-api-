@@ -63,7 +63,7 @@ public class SellerProfileServiceImpl implements SellerProfileService{
         SellerProfile profile = sellerProfileRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Seller profile not found for this user"));
-        return withRating(profile);
+        return withRatingForOwner(profile);
     }
 
     @Override
@@ -95,7 +95,7 @@ public class SellerProfileServiceImpl implements SellerProfileService{
         if (replacedLogo != null) {
             fileUploadService.deleteQuietly(replacedLogo);
         }
-        return withRating(updated);
+        return withRatingForOwner(updated);
     }
 
     /**
@@ -105,6 +105,14 @@ public class SellerProfileServiceImpl implements SellerProfileService{
      */
     private SellerProfileResponse withRating(SellerProfile profile) {
         return sellerProfileMapper.toResponseWithRating(
+                profile,
+                reviewRepository.averageRatingForSeller(profile.getSellerId()),
+                reviewRepository.countBySeller_SellerId(profile.getSellerId()));
+    }
+
+    /** As {@link #withRating}, for the routes answering a seller about their own shop. */
+    private SellerProfileResponse withRatingForOwner(SellerProfile profile) {
+        return sellerProfileMapper.toOwnerResponse(
                 profile,
                 reviewRepository.averageRatingForSeller(profile.getSellerId()),
                 reviewRepository.countBySeller_SellerId(profile.getSellerId()));

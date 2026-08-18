@@ -1,14 +1,11 @@
 package co.istad.projectpracticum.phsardigital.features.listings;
 
 /**
- * Why a listing was suggested.
+ * Why a listing was suggested, so the storefront can label the strip — "Bought
+ * together" and "More from this shop" are different promises to a buyer.
  *
- * <p>Published rather than kept internal so the storefront can label the strip honestly
- * — "Bought together" and "More from this shop" are different promises to a buyer, and
- * a single unexplained row of products cannot make either.
- *
- * <p>Declared in the order the tiers are filled: a listing that qualifies under more
- * than one reason is credited to the strongest.
+ * <p>Declared in the order the tiers are filled: a listing qualifying under more than
+ * one reason is credited to the strongest.
  */
 public enum RelatedReason {
 

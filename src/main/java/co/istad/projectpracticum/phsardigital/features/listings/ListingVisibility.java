@@ -7,12 +7,8 @@ import java.util.EnumSet;
 import java.util.Set;
 
 /**
- * Who is allowed to see a listing.
- *
- * <p>Lifted out of {@code ListingServiceImpl.getListing} once a second endpoint needed
- * the same answer. A copied rule is a rule that drifts, and this is the one that decides
- * whether a suspended shop's products are still reachable — it should have exactly one
- * home.
+ * Who is allowed to see a listing. Shared by every route that reads one, so the rule
+ * deciding whether a suspended shop's products stay reachable has a single home.
  */
 @Component
 public class ListingVisibility {
@@ -27,9 +23,7 @@ public class ListingVisibility {
     }
 
     /**
-     * Whether anybody at all may read this listing, the caller's token notwithstanding.
-     *
-     * <p>The shop has to be trading too, or a suspended seller's products stay reachable
+     * The shop has to be trading too, or a suspended seller's products stay reachable
      * by direct link even though they are gone from search.
      */
     public boolean isPubliclyVisible(Listing listing) {

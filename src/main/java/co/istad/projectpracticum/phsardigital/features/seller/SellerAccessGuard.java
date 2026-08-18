@@ -33,10 +33,25 @@ public class SellerAccessGuard {
                         "Seller profile not found. Please complete seller registration first."));
 
         if (!Boolean.TRUE.equals(profile.getIsActive())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "This shop is not active. Contact support if you believe this is a mistake.");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, suspensionMessage(profile));
         }
         return profile;
+    }
+
+    /**
+     * Why the shop cannot trade, told to the shop itself — a seller discovers the
+     * suspension by trying to post, so this is where they should learn the reason.
+     * Safe to include because the message only ever reaches the shop's own owner.
+     *
+     * <p>The fallback covers a profile deactivated by something other than
+     * {@code AdminSellerService}, which records a reason every time.
+     */
+    private String suspensionMessage(SellerProfile profile) {
+        String reason = profile.getSuspensionReason();
+        if (reason == null || reason.isBlank()) {
+            return "This shop is not active. Contact support if you believe this is a mistake.";
+        }
+        return "This shop has been suspended by an administrator and cannot trade. Reason: " + reason;
     }
 
     /** Whether the caller has a seller profile at all, active or not. */
