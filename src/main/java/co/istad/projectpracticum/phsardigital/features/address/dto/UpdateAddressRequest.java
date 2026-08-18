@@ -40,6 +40,16 @@ public record UpdateAddressRequest(
 
         @DecimalMin(value = "-180.0", message = "Longitude must be between -180 and 180")
         @DecimalMax(value = "180.0", message = "Longitude must be between -180 and 180")
-        BigDecimal longitude
+        BigDecimal longitude,
+
+        /**
+         * Promotes this address to the account's default, so "edit it and make it my
+         * default" is one call rather than two that can half-succeed.
+         *
+         * <p>Only {@code true} acts. Clearing the flag without naming a replacement
+         * would leave the account with addresses but nothing for checkout to pick, so
+         * moving the default means sending {@code true} on the one that should have it.
+         */
+        Boolean isDefault
 ) {
 }

@@ -64,6 +64,9 @@ public class SecurityConfig {
                         // later has to be opened up deliberately.
                         .requestMatchers(HttpMethod.GET,"/api/v1/reviews/sellers/me").authenticated()
                         .requestMatchers(HttpMethod.GET,"/api/v1/reviews/sellers/*").permitAll()
+                        // Read only, matching the shop's reviews above: posting, editing
+                        // and deleting still fall through to authenticated().
+                        .requestMatchers(HttpMethod.GET,"/api/v1/reviews/listings/*").permitAll()
                         // Shop pages had no rule at all and so fell through to
                         // authenticated() — a storefront a logged-out visitor could not
                         // open, while its reviews were public. /sellers/me is the one

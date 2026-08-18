@@ -4,8 +4,8 @@ import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
 import co.istad.projectpracticum.phsardigital.features.file.FileUpload;
 import co.istad.projectpracticum.phsardigital.features.file.FileUploadService;
 import co.istad.projectpracticum.phsardigital.features.listings.Listing;
-import co.istad.projectpracticum.phsardigital.features.listings.ListingMapper;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingRepository;
+import co.istad.projectpracticum.phsardigital.features.listings.ListingResponseFactory;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingStatus;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingResponse;
 import co.istad.projectpracticum.phsardigital.features.review.ReviewRepository;
@@ -25,7 +25,7 @@ public class SellerProfileServiceImpl implements SellerProfileService{
 
     private final SellerProfileRepository sellerProfileRepository;
     private final ListingRepository listingRepository;
-    private final ListingMapper listingMapper;
+    private final ListingResponseFactory listingResponseFactory;
     private final SellerProfileMapper sellerProfileMapper;
     private final FileUploadService fileUploadService;
     private final ReviewRepository reviewRepository;
@@ -54,7 +54,7 @@ public class SellerProfileServiceImpl implements SellerProfileService{
 
         Page<Listing> listings = listingRepository.findBySellerProfileAndStatus(
                 seller, ListingStatus.ACTIVE, pageable);
-        return listings.map(listingMapper::toResponse);
+        return listingResponseFactory.page(listings);
     }
 
     @Override

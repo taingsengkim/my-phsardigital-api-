@@ -3,6 +3,7 @@ package co.istad.projectpracticum.phsardigital.features.seller;
 
 import co.istad.projectpracticum.phsardigital.features.file.FileUploadService;
 import co.istad.projectpracticum.phsardigital.features.seller.dto.SellerProfileResponse;
+import co.istad.projectpracticum.phsardigital.features.seller.dto.SellerProfileSummaryResponse;
 import co.istad.projectpracticum.phsardigital.features.seller.dto.SellerProfileUpdateRequest;
 import org.mapstruct.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,6 +31,25 @@ public abstract class SellerProfileMapper {
      */
     public SellerProfileResponse toResponse(SellerProfile profile) {
         return toResponseWithRating(profile, null, null);
+    }
+
+    /**
+     * The shop block embedded in a listing, a review or a reply. Written out for the
+     * same reason as {@link #toResponse}: only {@link FileUploadService} knows which
+     * URL scheme the logo needs.
+     */
+    public SellerProfileSummaryResponse toSummary(SellerProfile profile) {
+        if (profile == null) {
+            return null;
+        }
+        return new SellerProfileSummaryResponse(
+                profile.getSellerId(),
+                profile.getBusinessName(),
+                fileUploadService.getPreviewUrl(profile.getLogoFile()),
+                profile.getPhoneNumber(),
+                profile.getBiography(),
+                profile.getSocialLink()
+        );
     }
 
     /**

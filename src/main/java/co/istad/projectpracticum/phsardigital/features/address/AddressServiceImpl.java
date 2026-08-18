@@ -66,7 +66,8 @@ public class AddressServiceImpl implements AddressService {
     @Override
     @Transactional
     public AddressResponse update(UUID id, UpdateAddressRequest request) {
-        Address address = requireOwned(id, AuthUtils.extractUserId());
+        String userId = AuthUtils.extractUserId();
+        Address address = requireOwned(id, userId);
 
         if (request.label() != null) {
             address.setLabel(request.label());
@@ -95,7 +96,21 @@ public class AddressServiceImpl implements AddressService {
         if (request.longitude() != null) {
             address.setLongitude(request.longitude());
         }
-        return toResponse(addressRepository.save(address));
+
+        // Only a promotion, never a demotion — see UpdateAddressRequest.isDefault.
+        boolean promoting = Boolean.TRUE.equals(request.isDefault());
+        if (promoting) {
+            address.setIsDefault(true);
+        }
+
+        Address saved = addressRepository.save(address);
+
+        // After the save, as in create(): this row has to hold the flag before the
+        // others lose it, or a failure in between leaves the account with none.
+        if (promoting) {
+            addressRepository.clearOtherDefaults(userId, id);
+        }
+        return toResponse(saved);
     }
 
     @Override

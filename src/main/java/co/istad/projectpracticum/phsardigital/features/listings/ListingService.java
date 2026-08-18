@@ -1,6 +1,7 @@
 package co.istad.projectpracticum.phsardigital.features.listings;
 
 import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingCreateRequest;
+import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingFilter;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingResponse;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.UpdateListingRequest;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_images.dto.AddListingImageRequest;
@@ -39,16 +40,34 @@ public interface ListingService {
      */
     Page<ListingResponse> getMyListings(String status, Integer pageNumber, Integer pageSize);
     /**
-     * Retrieves a paginated list of publicly visible listings.
+     * The public catalogue: browse, search, filter and sort.
      *
-     * <p>Only listings with status {@code ACTIVE} are returned — this is the
-     * public-facing browse/search endpoint, safe for unauthenticated callers.
+     * <p>Only {@code ACTIVE} listings from shops that are still trading are returned, so
+     * this is safe for unauthenticated callers. Every filter is applied in the database.
      *
+     * @param filter     what to narrow by; may be empty
      * @param pageNumber zero-based page index
      * @param pageSize   number of listings per page
-     * @return a page of active listings
+     * @param sort       {@code field,direction} — see {@link ListingSort} for the
+     *                   fields that can be sorted on; null for newest first
+     * @return a page of active listings, each with its star rating attached
+     * @throws org.springframework.web.server.ResponseStatusException with
+     *         {@code 400 BAD_REQUEST} when {@code sort} names something unsortable
      */
-    Page<ListingResponse> getAll(Integer pageNumber, Integer pageSize);
+    Page<ListingResponse> getAll(ListingFilter filter, Integer pageNumber, Integer pageSize, String sort);
+
+    /**
+     * Retrieves a single listing by the slug its public URL is built from.
+     *
+     * <p>Visibility is decided exactly as in {@link #getListing}.
+     *
+     * @param slug the listing's slug
+     * @return the matching listing
+     * @throws org.springframework.web.server.ResponseStatusException with
+     *         {@code 404 NOT_FOUND} if no listing has that slug, or the caller may not
+     *         see it
+     */
+    ListingResponse getListingBySlug(String slug);
     /**
      * Retrieves a single listing by its UUID.
      *

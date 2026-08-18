@@ -1,6 +1,7 @@
 package co.istad.projectpracticum.phsardigital.features.listings;
 
 import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingCreateRequest;
+import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingFilter;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingResponse;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.RelatedListingResponse;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.UpdateListingRequest;
@@ -30,14 +31,39 @@ public class ListingController {
         return listingService.create(listingCreateRequest);
     }
 
+    /**
+     * The public catalogue. {@code status} is the exception to the filters below and
+     * stays admin-only — it is the moderation view, on its own unfiltered path.
+     *
+     * @param sort {@code field,direction}, e.g. {@code price,asc}
+     */
     @GetMapping
     public Page<ListingResponse> getAll(@RequestParam(required = false) String status,
+                                        @RequestParam(required = false) UUID categoryUuid,
+                                        @RequestParam(required = false) String categorySlug,
+                                        @RequestParam(required = false) String search,
+                                        @RequestParam(required = false) String sellerId,
+                                        @RequestParam(required = false) Double minPrice,
+                                        @RequestParam(required = false) Double maxPrice,
+                                        @RequestParam(required = false) String sort,
                                         @RequestParam(defaultValue = "0") Integer pageNumber,
                                         @RequestParam(defaultValue = "20") Integer pageSize) {
         if (status == null || status.isBlank()) {
-            return listingService.getAll(pageNumber, pageSize); // public, ACTIVE-only
+            ListingFilter filter = new ListingFilter(
+                    categoryUuid, categorySlug, search, sellerId, minPrice, maxPrice);
+            return listingService.getAll(filter, pageNumber, pageSize, sort); // public, ACTIVE-only
         }
         return listingService.getAllListingsByStatus(status, pageNumber, pageSize);
+    }
+
+    /**
+     * A listing by the slug its public URL is built from, mirroring
+     * {@code /api/v1/categories/slug/{slug}}. A literal segment, so it takes precedence
+     * over {@code /{uuid}} and a slug is never parsed as a UUID.
+     */
+    @GetMapping("/slug/{slug}")
+    public ListingResponse getBySlug(@PathVariable String slug) {
+        return listingService.getListingBySlug(slug);
     }
 
     /**

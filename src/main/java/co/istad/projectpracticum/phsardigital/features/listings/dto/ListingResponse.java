@@ -27,8 +27,23 @@ public record ListingResponse(
         List<ListingImageResponse> images,
         List<ListingAttributeResponse> listingAttributes ,
         LocalDateTime createdAt,
-        LocalDateTime lastModifiedAt
-//        Double averageRating ,
-//        Integer reviewCount
+        LocalDateTime lastModifiedAt,
+        Double averageRating,
+        Long reviewCount
 ) {
+
+    /**
+     * The same listing with its star rating filled in.
+     *
+     * <p>The mapper leaves both null, so a listing embedded in something else — a review
+     * carries one — costs no aggregate query. Null means "not computed on this route",
+     * as it does on {@code SellerProfileResponse}; the listing's own routes fill it in
+     * through {@code ListingResponseFactory}.
+     */
+    public ListingResponse withRating(Double averageRating, Long reviewCount) {
+        return new ListingResponse(
+                uuid, sellerProfile, category, title, slug, description, price, stockQty,
+                status, isFeatured, thumbnailUri, sold, images, listingAttributes,
+                createdAt, lastModifiedAt, averageRating, reviewCount);
+    }
 }

@@ -46,6 +46,27 @@ public interface ReviewRepository extends JpaRepository<Review , UUID> {
     long countBySeller_SellerId(String sellerId);
 
     /**
+     * One product's star rating, on the same terms as {@link #averageRatingForSeller} —
+     * computed on read, and null rather than zero when nothing has been reviewed.
+     */
+    @Query("SELECT AVG(r.rating) FROM Review r WHERE r.listing.uuid = :listingUuid")
+    Double averageRatingForListing(@Param("listingUuid") UUID listingUuid);
+
+    long countByListing_Uuid(UUID listingUuid);
+
+    /**
+     * Ratings for a whole page of products in one query, since a grid shows stars on
+     * every card and asking per card is an N+1.
+     *
+     * @return {@code [listingUuid, averageRating, reviewCount]}; unreviewed products
+     *         are absent rather than present with zeroes
+     */
+    @Query("SELECT r.listing.uuid, AVG(r.rating), COUNT(r) FROM Review r "
+            + "WHERE r.listing.uuid IN :listingUuids "
+            + "GROUP BY r.listing.uuid")
+    List<Object[]> ratingsForListings(@Param("listingUuids") Collection<UUID> listingUuids);
+
+    /**
      * Shops ranked by average score.
      *
      * <p>{@code HAVING} is what keeps the board honest: without a floor, one shop with

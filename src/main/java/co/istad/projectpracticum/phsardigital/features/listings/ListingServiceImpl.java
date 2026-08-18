@@ -7,6 +7,7 @@ import co.istad.projectpracticum.phsardigital.features.categories.CategoryReposi
 import co.istad.projectpracticum.phsardigital.features.file.FileUpload;
 import co.istad.projectpracticum.phsardigital.features.file.FileUploadService;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingCreateRequest;
+import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingFilter;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingResponse;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.UpdateListingRequest;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_attributes.ListingAttribute;
@@ -23,6 +24,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -37,12 +39,12 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ListingServiceImpl implements ListingService{
     private final ListingRepository listingRepository;
-    private final ListingMapper listingMapper;
     private final CategoryRepository categoryRepository;
     private final SellerAccessGuard sellerAccessGuard;
     private final SubscriptionService subscriptionService;
     private final FileUploadService fileUploadService;
     private final ListingVisibility listingVisibility;
+    private final ListingResponseFactory listingResponseFactory;
 
     /**
      * The moderation view: every seller's listings in one status.
@@ -62,7 +64,7 @@ public class ListingServiceImpl implements ListingService{
         }
         Pageable pageable = PageRequest.of(pageNumber, pageSize, Sort.by(Sort.Direction.DESC,("lastModifiedAt")));
         Page<Listing> listingPage = listingRepository.findByStatus(parseStatus(status), pageable);
-        return listingPage.map(listingMapper::toResponse);
+        return listingResponseFactory.page(listingPage);
     }
 
     /**
@@ -77,7 +79,7 @@ public class ListingServiceImpl implements ListingService{
         Page<Listing> listingPage = (status == null || status.isBlank())
                 ? listingRepository.findBySellerProfile_SellerId(sellerId, pageable)
                 : listingRepository.findBySellerProfile_SellerIdAndStatus(sellerId, parseStatus(status), pageable);
-        return listingPage.map(listingMapper::toResponse);
+        return listingResponseFactory.page(listingPage);
     }
 
     private ListingStatus parseStatus(String status) {
@@ -90,11 +92,81 @@ public class ListingServiceImpl implements ListingService{
     }
 
     @Override
-    public Page<ListingResponse> getAll(Integer pageNumber, Integer pageSize) {
-        Pageable pageable = PageRequest.of(pageNumber, pageSize, Sort.by(Sort.Direction.DESC,("lastModifiedAt")));
-        Page<Listing> listingPage =
-                listingRepository.findByStatusAndSellerProfile_IsActiveTrue(ListingStatus.ACTIVE, pageable);
-        return listingPage.map(listingMapper::toResponse);
+    @Transactional
+    public Page<ListingResponse> getAll(ListingFilter filter, Integer pageNumber, Integer pageSize, String sort) {
+        Pageable pageable = PageRequest.of(pageNumber, pageSize, ListingSort.parse(sort));
+
+        Specification<Listing> spec = ListingSpecifications.publiclyBrowsable();
+
+        if (filter != null) {
+            Optional<Set<UUID>> categories = resolveCategories(filter);
+            if (categories.isPresent()) {
+                if (categories.get().isEmpty()) {
+                    // Named a category that does not exist: nothing matches it.
+                    return Page.empty(pageable);
+                }
+                spec = spec.and(ListingSpecifications.inCategories(categories.get()));
+            }
+            if (hasText(filter.search())) {
+                spec = spec.and(ListingSpecifications.matching(filter.search()));
+            }
+            if (hasText(filter.sellerId())) {
+                spec = spec.and(ListingSpecifications.soldBy(filter.sellerId()));
+            }
+            if (filter.minPrice() != null) {
+                spec = spec.and(ListingSpecifications.pricedAtLeast(filter.minPrice()));
+            }
+            if (filter.maxPrice() != null) {
+                spec = spec.and(ListingSpecifications.pricedAtMost(filter.maxPrice()));
+            }
+        }
+
+        return listingResponseFactory.page(listingRepository.findAll(spec, pageable));
+    }
+
+    /**
+     * The categories a category filter matches: the one named plus everything beneath
+     * it, since listings are filed against leaves while category pages are built from
+     * the whole tree.
+     *
+     * @return empty when no category was named at all; a present-but-empty set when one
+     *         was named and does not exist
+     */
+    private Optional<Set<UUID>> resolveCategories(ListingFilter filter) {
+        Optional<Category> root;
+        if (filter.categoryUuid() != null) {
+            root = categoryRepository.findByUuidAndIsDeletedFalse(filter.categoryUuid());
+        } else if (hasText(filter.categorySlug())) {
+            root = categoryRepository.findBySlugAndIsDeletedFalse(filter.categorySlug().trim());
+        } else {
+            return Optional.empty();
+        }
+        return Optional.of(root.map(this::withDescendants).orElseGet(Set::of));
+    }
+
+    /**
+     * Walks the category tree breadth-first. The visited set guards the traversal: a
+     * parent cycle would otherwise hang the request rather than fail it.
+     */
+    private Set<UUID> withDescendants(Category root) {
+        Set<UUID> found = new LinkedHashSet<>();
+        Deque<Category> pending = new ArrayDeque<>(List.of(root));
+        while (!pending.isEmpty()) {
+            Category category = pending.poll();
+            if (!found.add(category.getUuid())) {
+                continue;
+            }
+            if (category.getChildCategories() != null) {
+                category.getChildCategories().stream()
+                        .filter(child -> !Boolean.TRUE.equals(child.getIsDeleted()))
+                        .forEach(pending::add);
+            }
+        }
+        return found;
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     @Override
@@ -102,12 +174,23 @@ public class ListingServiceImpl implements ListingService{
         Listing listing = listingRepository.findByUuidWithDetails(uuid)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found"));
 
+        return requireVisible(listing);
+    }
+
+    @Override
+    public ListingResponse getListingBySlug(String slug) {
+        Listing listing = listingRepository.findBySlugWithDetails(slug)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found"));
+        return requireVisible(listing);
+    }
+
+    private ListingResponse requireVisible(Listing listing) {
         if (!listingVisibility.isVisible(listing)) {
             // 404 rather than 403: a draft nobody may read should not have its
             // existence confirmed either.
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found");
         }
-        return listingMapper.toResponse(listing);
+        return listingResponseFactory.one(listing);
     }
 
     @Override
@@ -163,7 +246,7 @@ public class ListingServiceImpl implements ListingService{
         attachImages(listing, request.images(), imageFiles);
 
         Listing saved = listingRepository.save(listing);
-        return listingMapper.toResponse(saved);
+        return listingResponseFactory.one(saved);
     }
 
     @Override
@@ -217,7 +300,7 @@ public class ListingServiceImpl implements ListingService{
             listing.setIsFeatured(request.isFeatured());
         }
         Listing updated = listingRepository.save(listing);
-        return listingMapper.toResponse(updated);
+        return listingResponseFactory.one(updated);
     }
 
     @Override
@@ -237,7 +320,7 @@ public class ListingServiceImpl implements ListingService{
         if (oldFile != null) {
             fileUploadService.delete(oldFile.getObjectName());
         }
-        return listingMapper.toResponse(saved);
+        return listingResponseFactory.one(saved);
     }
     @Override
     @Transactional
@@ -256,7 +339,7 @@ public class ListingServiceImpl implements ListingService{
         image.setListing(listing);
         listing.getImages().add(image);
         Listing saved = listingRepository.save(listing);
-        return listingMapper.toResponse(saved);
+        return listingResponseFactory.one(saved);
     }
 
     @Override
@@ -293,7 +376,7 @@ public class ListingServiceImpl implements ListingService{
         }
 
         Listing saved = listingRepository.save(listing);
-        return listingMapper.toResponse(saved);
+        return listingResponseFactory.one(saved);
     }
 
     @Override

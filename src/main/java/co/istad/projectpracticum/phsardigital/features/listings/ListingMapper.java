@@ -6,13 +6,17 @@ import co.istad.projectpracticum.phsardigital.features.listings.dto.UpdateListin
 import co.istad.projectpracticum.phsardigital.features.listings.listing_attributes.ListingAttributeMapper;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_images.ListingImageMapper;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_images.dto.ThumbnailImageResponse;
+import co.istad.projectpracticum.phsardigital.features.seller.SellerProfileMapper;
 import org.mapstruct.*;
 import org.springframework.beans.factory.annotation.Autowired;
 
 @Mapper(componentModel = "spring", uses = {
         ListingImageMapper.class,
         CategoryMapper.class ,
-        ListingAttributeMapper.class
+        ListingAttributeMapper.class,
+        // The embedded shop block: its logoUri needs FileUploadService, which MapStruct
+        // cannot generate itself.
+        SellerProfileMapper.class
 })
 public abstract class ListingMapper {
 

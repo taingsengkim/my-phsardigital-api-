@@ -5,9 +5,12 @@ import co.istad.projectpracticum.phsardigital.features.seller.SellerProfile;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.repository.query.Param;
 
 import java.util.Collection;
@@ -15,12 +18,31 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-public interface ListingRepository extends JpaRepository<Listing, UUID> {
+public interface ListingRepository extends JpaRepository<Listing, UUID>, JpaSpecificationExecutor<Listing> {
     @Query("SELECT l FROM Listing l " +
             "LEFT JOIN FETCH l.category " +
             "LEFT JOIN FETCH l.images " +
             "WHERE l.uuid = :uuid")
     Optional<Listing> findByUuidWithDetails(@Param("uuid") UUID uuid);
+
+    /**
+     * The same listing by the slug its public URL is built from. Slugs are unique across
+     * the table, so this is a lookup rather than a search.
+     */
+    @Query("SELECT l FROM Listing l " +
+            "LEFT JOIN FETCH l.category " +
+            "LEFT JOIN FETCH l.images " +
+            "WHERE l.slug = :slug")
+    Optional<Listing> findBySlugWithDetails(@Param("slug") String slug);
+
+    /**
+     * The filtered browse query. Overridden only to hang an {@code @EntityGraph} on it:
+     * a specification produces no fetch joins, so every card would otherwise load its
+     * category, shop and thumbnail one query at a time.
+     */
+    @Override
+    @EntityGraph(attributePaths = {"category", "sellerProfile", "thumbnailFile"})
+    Page<Listing> findAll(Specification<Listing> spec, Pageable pageable);
 
 
     Page<Listing> findByStatus(ListingStatus status,Pageable pageable);
