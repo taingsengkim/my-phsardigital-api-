@@ -80,4 +80,35 @@ public interface PurchaseRepository extends JpaRepository<Purchase, UUID> {
     List<Object[]> salesForSellers(@Param("status") PurchaseStatus status,
                                    @Param("since") LocalDateTime since,
                                    @Param("sellerIds") Collection<String> sellerIds);
+
+    /**
+     * What else went into the basket alongside a listing, most frequent first — the
+     * strongest signal behind related products, because it is drawn from what buyers
+     * actually did rather than from how the catalogue happens to be filed.
+     *
+     * <p>Counts orders, not items, so one buyer ordering ten of something does not
+     * outweigh ten buyers ordering one each.
+     *
+     * <p>An order is always for a single shop, so everything this returns comes from
+     * the same shop as {@code listingUuid}. That is a property of the checkout, not a
+     * restriction imposed here: it ranks that shop's own catalogue by what genuinely
+     * sells alongside the product, and the marketplace-wide suggestions come from the
+     * category tier instead.
+     *
+     * @param statuses which orders count as real; a PENDING order is a request the
+     *                 seller has not accepted and a CANCELLED one came to nothing, so
+     *                 counting either would let anyone shape a rival's suggestions by
+     *                 placing orders they never intend to pay for
+     * @return {@code [listingUuid, orderCount]}, strongest first
+     */
+    @Query("SELECT peer.listing.uuid, COUNT(DISTINCT peer.purchase.uuid) "
+            + "FROM PurchaseItem source JOIN PurchaseItem peer ON peer.purchase = source.purchase "
+            + "WHERE source.listing.uuid = :listingUuid "
+            + "AND peer.listing.uuid <> :listingUuid "
+            + "AND source.purchase.status IN :statuses "
+            + "GROUP BY peer.listing.uuid "
+            + "ORDER BY COUNT(DISTINCT peer.purchase.uuid) DESC")
+    List<Object[]> rankBoughtTogetherWith(@Param("listingUuid") UUID listingUuid,
+                                          @Param("statuses") Collection<PurchaseStatus> statuses,
+                                          Pageable pageable);
 }

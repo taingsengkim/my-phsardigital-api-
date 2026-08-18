@@ -2,8 +2,10 @@ package co.istad.projectpracticum.phsardigital.features.listings;
 
 import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingCreateRequest;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingResponse;
+import co.istad.projectpracticum.phsardigital.features.listings.dto.RelatedListingResponse;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.UpdateListingRequest;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_images.dto.AddListingImageRequest;
+import co.istad.projectpracticum.phsardigital.features.listings.listing_images.dto.ReorderImagesRequest;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_images.dto.UpdateThumbnailRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -12,6 +14,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -19,6 +22,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ListingController {
     private final  ListingService listingService;
+    private final RelatedListingService relatedListingService;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -52,6 +56,18 @@ public class ListingController {
         return listingService.getListing(uuid);
     }
 
+    /**
+     * Products to show alongside this one. Public, exactly as far as the listing itself
+     * is — the service applies the same visibility rule before suggesting anything.
+     *
+     * @param limit how many cards to return; omit for the default
+     */
+    @GetMapping("/{uuid}/related")
+    public List<RelatedListingResponse> getRelated(@PathVariable UUID uuid,
+                                                   @RequestParam(required = false) Integer limit) {
+        return relatedListingService.getRelated(uuid, limit);
+    }
+
     @PatchMapping("/{uuid}")
     public ListingResponse update(@PathVariable UUID uuid, @Valid @RequestBody UpdateListingRequest request) {
         return listingService.update(uuid, request);
@@ -68,6 +84,16 @@ public class ListingController {
     public ListingResponse addImage(@PathVariable UUID uuid,
                                     @RequestBody AddListingImageRequest addListingImageRequest) {
         return listingService.addImage(uuid, addListingImageRequest);
+    }
+
+    /**
+     * Rearranges the gallery. Takes the whole order at once rather than one image's
+     * position, so the gallery never sits in a state the seller did not ask for.
+     */
+    @PatchMapping("/{uuid}/images/order")
+    public ListingResponse reorderImages(@PathVariable UUID uuid,
+                                         @Valid @RequestBody ReorderImagesRequest request) {
+        return listingService.reorderImages(uuid, request.imageUuids());
     }
 
     @DeleteMapping("/{uuid}/images/{imageUuid}")

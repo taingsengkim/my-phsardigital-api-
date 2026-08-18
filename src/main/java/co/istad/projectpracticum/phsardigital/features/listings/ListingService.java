@@ -7,6 +7,7 @@ import co.istad.projectpracticum.phsardigital.features.listings.listing_images.d
 import org.springframework.data.domain.Page;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
 import java.util.UUID;
 
 public interface ListingService {
@@ -110,6 +111,18 @@ public interface ListingService {
      * @return the updated listing
      */
     ListingResponse addImage(UUID uuid, AddListingImageRequest addListingImageRequest);
+    /**
+     * Rearranges the listing's gallery.
+     *
+     * @param uuid the unique identifier of the listing
+     * @param imageUuids every image on the listing, in the order they should appear
+     * @return the updated listing, its images already in the new order
+     * @throws org.springframework.web.server.ResponseStatusException with
+     *         {@code 400 BAD_REQUEST} when the list does not name each of the
+     *         listing's images exactly once
+     */
+    ListingResponse reorderImages(UUID uuid, List<UUID> imageUuids);
+
     /**
      * Removes an image from an existing listing.
      *

@@ -60,7 +60,17 @@ public class Listing extends BasedEntity {
     @Column(nullable = false)
     private Integer sold;
 
+    /**
+     * Ordered here rather than in one query, so every path that loads a listing gets
+     * the gallery in the seller's order. {@code sortOrder} was stored and echoed back
+     * but never ordered anything, which left the gallery in whatever sequence the
+     * database happened to return — arbitrary, and liable to change after an update.
+     *
+     * <p>Rows written before this carry a null {@code sortOrder} and sort last, which
+     * is the harmless end of the gallery; the first reorder normalises them.
+     */
     @OneToMany(mappedBy = "listing", orphanRemoval = true)
+    @OrderBy("sortOrder ASC")
     private List<ListingImage> images = new ArrayList<>();
 
     @ManyToOne

@@ -20,11 +20,10 @@ public class ListingImage {
     @JoinColumn(name = "file_id", nullable = false)
     private FileUpload file;
 
+    /** Position in the gallery, 0-based. Applied by {@code Listing.images}. */
     private Integer sortOrder;
 
     @ManyToOne()
     @JoinColumn(name = "listing_uuid")
     private Listing listing;
-
-    private Boolean isPrimary;
 }

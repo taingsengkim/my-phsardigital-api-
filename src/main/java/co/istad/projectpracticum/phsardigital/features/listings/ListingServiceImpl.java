@@ -42,6 +42,7 @@ public class ListingServiceImpl implements ListingService{
     private final SellerAccessGuard sellerAccessGuard;
     private final SubscriptionService subscriptionService;
     private final FileUploadService fileUploadService;
+    private final ListingVisibility listingVisibility;
 
     /**
      * The moderation view: every seller's listings in one status.
@@ -96,41 +97,17 @@ public class ListingServiceImpl implements ListingService{
         return listingPage.map(listingMapper::toResponse);
     }
 
-    /** The statuses a listing is browsable in. Everything else is private to its shop. */
-    private static final Set<ListingStatus> PUBLICLY_VISIBLE =
-            EnumSet.of(ListingStatus.ACTIVE, ListingStatus.SOLD_OUT);
-
     @Override
     public ListingResponse getListing(UUID uuid) {
         Listing listing = listingRepository.findByUuidWithDetails(uuid)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found"));
 
-        // The shop has to be trading too, or a suspended seller's products stay
-        // reachable by direct link even though they are gone from search.
-        boolean publiclyVisible = PUBLICLY_VISIBLE.contains(listing.getStatus())
-                && Boolean.TRUE.equals(listing.getSellerProfile().getIsActive());
-
-        if (!publiclyVisible && !maySeePrivately(listing)) {
+        if (!listingVisibility.isVisible(listing)) {
             // 404 rather than 403: a draft nobody may read should not have its
             // existence confirmed either.
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found");
         }
         return listingMapper.toResponse(listing);
-    }
-
-    /**
-     * Whether the caller is the listing's own seller or an admin. Both checks are
-     * anonymous-safe — {@code hasRole} answers false rather than throwing, and the
-     * owner comparison is only reached for a caller who has a token.
-     */
-    private boolean maySeePrivately(Listing listing) {
-        if (AuthUtils.hasRole("ADMIN")) {
-            return true;
-        }
-        if (!AuthUtils.isAuthenticated()) {
-            return false;
-        }
-        return listing.getSellerProfile().getSellerId().equals(AuthUtils.extractUserId());
     }
 
     @Override
@@ -276,9 +253,45 @@ public class ListingServiceImpl implements ListingService{
         ListingImage image = new ListingImage();
         image.setFile(file);
         image.setSortOrder(request.sortOrder() != null ? request.sortOrder() : listing.getImages().size());
-        image.setIsPrimary(request.isPrimary() != null ? request.isPrimary() : false);
         image.setListing(listing);
         listing.getImages().add(image);
+        Listing saved = listingRepository.save(listing);
+        return listingMapper.toResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public ListingResponse reorderImages(UUID uuid, List<UUID> imageUuids) {
+        Listing listing = listingRepository.findByUuidWithDetails(uuid)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found"));
+        String currentSellerId = AuthUtils.extractUserId();
+        if (!listing.getSellerProfile().getSellerId().equals(currentSellerId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not allowed to update this listing.");
+        }
+        requireNotSuspended(listing);
+
+        Map<UUID, ListingImage> byUuid = listing.getImages().stream()
+                .collect(Collectors.toMap(ListingImage::getUuid, Function.identity()));
+
+        // Insisting on the complete set is what makes this safe to apply wholesale: a
+        // partial list would leave the images it omitted holding stale positions, and a
+        // repeated id would put two images in the same place.
+        Set<UUID> requested = new LinkedHashSet<>(imageUuids);
+        if (requested.size() != imageUuids.size()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "The same image is listed more than once.");
+        }
+        if (!requested.equals(byUuid.keySet())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "The new order must list every image on this listing exactly once. "
+                            + "Expected " + byUuid.size() + " image(s), received " + requested.size() + ".");
+        }
+
+        int position = 0;
+        for (UUID imageUuid : imageUuids) {
+            byUuid.get(imageUuid).setSortOrder(position++);
+        }
+
         Listing saved = listingRepository.save(listing);
         return listingMapper.toResponse(saved);
     }
@@ -338,11 +351,14 @@ public class ListingServiceImpl implements ListingService{
         if (images == null) {
             return;
         }
-        for (ListingImageRequest req : images) {
+        for (int index = 0; index < images.size(); index++) {
+            ListingImageRequest req = images.get(index);
             ListingImage image = new ListingImage();
             image.setFile(imageFiles.get(req.objectName()));
-            image.setSortOrder(req.sortOrder());
-            image.setIsPrimary(req.isPrimary() != null ? req.isPrimary() : false);
+            // Falls back to the position in the request rather than leaving null, which
+            // is what addImage already did. Nulls here were how listings ended up with
+            // an unorderable gallery in the first place.
+            image.setSortOrder(req.sortOrder() != null ? req.sortOrder() : index);
             image.setListing(listing);
             listing.getImages().add(image);
         }

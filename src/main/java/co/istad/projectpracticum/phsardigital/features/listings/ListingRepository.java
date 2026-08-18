@@ -1,5 +1,6 @@
 package co.istad.projectpracticum.phsardigital.features.listings;
 
+import co.istad.projectpracticum.phsardigital.features.categories.Category;
 import co.istad.projectpracticum.phsardigital.features.seller.SellerProfile;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
@@ -9,6 +10,8 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -60,4 +63,69 @@ public interface ListingRepository extends JpaRepository<Listing, UUID> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT l FROM Listing l WHERE l.uuid = :uuid")
     Optional<Listing> findByUuidForUpdate(@Param("uuid") UUID uuid);
+
+    // Related products. All three fetch the category, shop and thumbnail the card is
+    // drawn from — every one of those is a ManyToOne, so join-fetching them is safe to
+    // paginate, and without it a strip of eight cards is a strip of eight extra
+    // queries. The gallery is deliberately not fetched: it is a collection, so fetching
+    // it would force Hibernate to paginate in memory over the whole result.
+
+    /**
+     * Category peers a visitor could actually buy, nearest in price first.
+     *
+     * <p>Price proximity rather than recency: a phone case sitting beside a phone is a
+     * worse suggestion than another case, however new the phone is. Sales break the tie,
+     * so among equally-priced peers the shelf leans towards what moves.
+     *
+     * <p>{@code isActive} is checked for the same reason the browse query checks it —
+     * suspending a shop leaves its listings {@code ACTIVE}, and a related strip would
+     * quietly put them back in front of buyers.
+     */
+    @Query("SELECT l FROM Listing l "
+            + "JOIN FETCH l.category "
+            + "JOIN FETCH l.sellerProfile s "
+            + "LEFT JOIN FETCH l.thumbnailFile "
+            + "WHERE l.category = :category "
+            + "AND l.uuid <> :excludeUuid "
+            + "AND l.status = :status "
+            + "AND s.isActive = true "
+            + "ORDER BY ABS(l.price - :price), l.sold DESC")
+    List<Listing> findCategoryPeers(@Param("category") Category category,
+                                    @Param("excludeUuid") UUID excludeUuid,
+                                    @Param("price") Double price,
+                                    @Param("status") ListingStatus status,
+                                    Pageable pageable);
+
+    /** The rest of one shop's window, best-selling first. */
+    @Query("SELECT l FROM Listing l "
+            + "JOIN FETCH l.category "
+            + "JOIN FETCH l.sellerProfile s "
+            + "LEFT JOIN FETCH l.thumbnailFile "
+            + "WHERE s = :seller "
+            + "AND l.uuid <> :excludeUuid "
+            + "AND l.status = :status "
+            + "AND s.isActive = true "
+            + "ORDER BY l.sold DESC, l.createdAt DESC")
+    List<Listing> findShopPeers(@Param("seller") SellerProfile seller,
+                                @Param("excludeUuid") UUID excludeUuid,
+                                @Param("status") ListingStatus status,
+                                Pageable pageable);
+
+    /**
+     * Reloads listings named by an aggregate, keeping only the ones still on sale.
+     *
+     * <p>Order history remembers listings that have since been archived, sold out or
+     * taken down, so what comes back from a co-purchase ranking cannot be trusted to be
+     * buyable. The caller restores the ranking's order afterwards — this is a filter,
+     * not a sort.
+     */
+    @Query("SELECT l FROM Listing l "
+            + "JOIN FETCH l.category "
+            + "JOIN FETCH l.sellerProfile s "
+            + "LEFT JOIN FETCH l.thumbnailFile "
+            + "WHERE l.uuid IN :uuids "
+            + "AND l.status = :status "
+            + "AND s.isActive = true")
+    List<Listing> findBuyableByUuidIn(@Param("uuids") Collection<UUID> uuids,
+                                      @Param("status") ListingStatus status);
 }
