@@ -8,6 +8,7 @@ import co.istad.projectpracticum.phsardigital.features.file.FileUploadService;
 import co.istad.projectpracticum.phsardigital.features.file.FileVisibility;
 import co.istad.projectpracticum.phsardigital.features.seller.SellerProfile;
 import co.istad.projectpracticum.phsardigital.features.seller.SellerRepository;
+import co.istad.projectpracticum.phsardigital.features.seller.ShopLocationResolver;
 import co.istad.projectpracticum.phsardigital.features.seller.application.dto.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -42,6 +43,7 @@ public class SellerApplicationServiceImpl implements SellerApplicationService {
     private final KeycloakAdminProps props;
     private final SellerApplicationMapper sellerApplicationMapper;
     private final FileUploadService fileUploadService;
+    private final ShopLocationResolver shopLocationResolver;
 
     // applicant
 
@@ -68,8 +70,13 @@ public class SellerApplicationServiceImpl implements SellerApplicationService {
         app.setAddress(request.address());
         app.setCity(request.city());
         app.setProvince(request.province());
-        app.setLatitude(request.latitude());
-        app.setLongitude(request.longitude());
+        // Resolved at application time so an approved shop arrives already pinned —
+        // approval copies these straight onto the profile.
+        shopLocationResolver.resolve(request.latitude(), request.longitude(), request.googleMapUrl())
+                .ifPresent(coordinates -> {
+                    app.setLatitude(coordinates.latitude());
+                    app.setLongitude(coordinates.longitude());
+                });
         app.setGoogleMapUrl(request.googleMapUrl());
         app.setLogoFile(resolveLogo(request.logoObjectName(), applicantId));
         app.setStatus(ApplicationStatus.PENDING);

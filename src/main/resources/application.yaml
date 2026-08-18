@@ -77,6 +77,13 @@ keycloak:
 app:
   cors:
     allowed-origin-patterns: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+  maps:
+    # Shop locations can be set by pasting a Google Maps link. The mobile app's Share
+    # button produces a maps.app.goo.gl redirect, which has to be followed to see the
+    # coordinates — set this false in an environment with no outbound access, and
+    # sellers there must send latitude and longitude instead.
+    resolve-short-links: ${MAPS_RESOLVE_SHORT_LINKS:true}
+    short-link-timeout: ${MAPS_SHORT_LINK_TIMEOUT:3s}
   error:
     # Adds the exception type, its cause chain, and the first application stack
     # frame to error responses. Defaults on so failures are diagnosable while

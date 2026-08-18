@@ -29,6 +29,7 @@ public class SellerProfileServiceImpl implements SellerProfileService{
     private final SellerProfileMapper sellerProfileMapper;
     private final FileUploadService fileUploadService;
     private final ReviewRepository reviewRepository;
+    private final ShopLocationResolver shopLocationResolver;
 
     @Override
     public SellerProfileResponse getPublicProfile(String sellerId) {
@@ -75,6 +76,14 @@ public class SellerProfileServiceImpl implements SellerProfileService{
 
         // Partially update only fields that are not null in request
         sellerProfileMapper.updateFromRequest(request, profile);
+
+        // After the mapper, which copies latitude and longitude across verbatim: when
+        // only a link was sent, this is what turns it into a position.
+        shopLocationResolver.resolve(request.latitude(), request.longitude(), request.googleMapUrl())
+                .ifPresent(coordinates -> {
+                    profile.setLatitude(coordinates.latitude());
+                    profile.setLongitude(coordinates.longitude());
+                });
 
         // Resolved before the write so a logo belonging to somebody else fails the
         // whole request instead of half-applying the rest of the patch.
