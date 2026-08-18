@@ -2,6 +2,11 @@ package co.istad.projectpracticum.phsardigital.features.seller.dto;
 
 import java.math.BigDecimal;
 
+/**
+ * @param averageRating the shop's star rating to one decimal place, or null when it
+ *                      has no reviews yet
+ * @param reviewCount   how many reviews that average is over
+ */
 public record SellerProfileResponse(
         String id,
         String businessName,
@@ -15,6 +20,8 @@ public record SellerProfileResponse(
         BigDecimal latitude,
         BigDecimal longitude,
         String googleMapUrl,
-        Boolean isActive
+        Boolean isActive,
+        Double averageRating,
+        Long reviewCount
 ) {
 }

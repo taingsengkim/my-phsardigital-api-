@@ -159,6 +159,17 @@ public class ReviewServiceImpl implements ReviewService {
     }
 
     @Override
+    public Page<ReviewResponse> getReviewsForSeller(String sellerId, Pageable pageable) {
+        // Resolved rather than queried by id straight off, so an unknown shop answers
+        // 404 instead of an empty page that looks like a shop nobody has reviewed.
+        SellerProfile seller = sellerProfileRepository.findById(sellerId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Shop not found"));
+        return reviewRepository.findBySeller(seller, pageable)
+                .map(reviewMapper::toResponse);
+    }
+
+    @Override
     @Transactional
     public ReviewReplyResponse replyToReview(UUID reviewUuid, ReviewReplyRequest request) {
         // 1. Get current user as seller

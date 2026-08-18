@@ -7,6 +7,9 @@ import co.istad.projectpracticum.phsardigital.features.seller.dto.SellerProfileU
 import org.mapstruct.*;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+
 @Mapper(componentModel = "spring")
 public abstract class SellerProfileMapper {
 
@@ -17,8 +20,29 @@ public abstract class SellerProfileMapper {
      * Written out rather than generated because the logo is stored as a file
      * reference but answered as a URL, and the URL scheme depends on the file's
      * visibility — something only {@link FileUploadService} knows.
+     *
+     * <p>Leaves the rating null. This is the method MapStruct reaches for whenever a
+     * shop block is embedded in something else — a review, a reply — and those are
+     * answered a page at a time, so costing each one an aggregate query would turn a
+     * page of ten reviews into eleven round trips. Null there means "not computed on
+     * this route", not "no reviews"; the shop's own endpoints use
+     * {@link #toResponseWithRating} and always fill it in.
      */
     public SellerProfileResponse toResponse(SellerProfile profile) {
+        return toResponseWithRating(profile, null, null);
+    }
+
+    /**
+     * The same shop, with its star rating attached.
+     *
+     * @param averageRating raw average from the database, rounded here so every
+     *                      caller answers the same 4.3 rather than one of them
+     *                      answering 4.333333333333333
+     * @param reviewCount   how many reviews back that average
+     */
+    public SellerProfileResponse toResponseWithRating(SellerProfile profile,
+                                                      Double averageRating,
+                                                      Long reviewCount) {
         return new SellerProfileResponse(
                 profile.getSellerId(),
                 profile.getBusinessName(),
@@ -32,8 +56,19 @@ public abstract class SellerProfileMapper {
                 profile.getLatitude(),
                 profile.getLongitude(),
                 profile.getGoogleMapUrl(),
-                profile.getIsActive()
+                profile.getIsActive(),
+                round(averageRating),
+                reviewCount
         );
+    }
+
+    private static Double round(Double averageRating) {
+        if (averageRating == null) {
+            return null;
+        }
+        return BigDecimal.valueOf(averageRating)
+                .setScale(1, RoundingMode.HALF_UP)
+                .doubleValue();
     }
 
     /**

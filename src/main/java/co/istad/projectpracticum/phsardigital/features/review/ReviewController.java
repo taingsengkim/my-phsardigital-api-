@@ -73,6 +73,24 @@ public class ReviewController {
     }
 
 
+    /**
+     * A named shop's reviews, for its public shop page — open to anyone, since a shop
+     * is browsed before signing in, not after. Declared after {@code /sellers/me} but
+     * that ordering is cosmetic: a literal segment outranks a variable one, so
+     * {@code /sellers/me} keeps answering for the current seller.
+     *
+     * <p>The rating these average out to is on the shop itself, at
+     * {@code GET /api/v1/sellers/{sellerId}}, rather than here — a page of reviews
+     * can only average the page it holds.
+     */
+    @GetMapping("/sellers/{sellerId}")
+    public Page<ReviewResponse> getReviewsForSeller(
+            @PathVariable String sellerId,
+            @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+        return reviewService.getReviewsForSeller(sellerId, pageable);
+    }
+
+
     @PostMapping("/{reviewUuid}/replies")
     @ResponseStatus(HttpStatus.CREATED)
     public ReviewReplyResponse replyToReview(

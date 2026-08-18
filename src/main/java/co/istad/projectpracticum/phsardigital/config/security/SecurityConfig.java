@@ -53,6 +53,14 @@ public class SecurityConfig {
         http.authorizeHttpRequests(auth ->
                 auth.requestMatchers(HttpMethod.GET,"/api/v1/categories","/api/v1/categories/**").permitAll()
                         .requestMatchers(HttpMethod.GET,"/api/v1/listings", "/api/v1/listings/**").permitAll()
+                        // A shop page is browsed before signing in, so its reviews are
+                        // open. Ordered before that rule: /reviews/sellers/me answers
+                        // for the current token and would otherwise be swallowed by
+                        // the wildcard and reach the controller with no caller.
+                        // A single * rather than **, so anything nested under a shop
+                        // later has to be opened up deliberately.
+                        .requestMatchers(HttpMethod.GET,"/api/v1/reviews/sellers/me").authenticated()
+                        .requestMatchers(HttpMethod.GET,"/api/v1/reviews/sellers/*").permitAll()
                         // Ordered before the open /auth/** rule below: /auth/me answers
                         // for the current token, so it is the one auth endpoint that
                         // needs one. Registration stays anonymous.

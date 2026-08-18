@@ -8,6 +8,7 @@ import co.istad.projectpracticum.phsardigital.features.listings.ListingMapper;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingRepository;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingStatus;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingResponse;
+import co.istad.projectpracticum.phsardigital.features.review.ReviewRepository;
 import co.istad.projectpracticum.phsardigital.features.seller.dto.SellerProfileResponse;
 import co.istad.projectpracticum.phsardigital.features.seller.dto.SellerProfileUpdateRequest;
 import lombok.RequiredArgsConstructor;
@@ -27,13 +28,14 @@ public class SellerProfileServiceImpl implements SellerProfileService{
     private final ListingMapper listingMapper;
     private final SellerProfileMapper sellerProfileMapper;
     private final FileUploadService fileUploadService;
+    private final ReviewRepository reviewRepository;
 
     @Override
     public SellerProfileResponse getPublicProfile(String sellerId) {
         SellerProfile profile = sellerProfileRepository.findById(sellerId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Shop not found"));
-        return sellerProfileMapper.toResponse(profile);
+        return withRating(profile);
     }
 
     @Override
@@ -54,7 +56,7 @@ public class SellerProfileServiceImpl implements SellerProfileService{
         SellerProfile profile = sellerProfileRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Seller profile not found for this user"));
-        return sellerProfileMapper.toResponse(profile);
+        return withRating(profile);
     }
 
     @Override
@@ -78,7 +80,19 @@ public class SellerProfileServiceImpl implements SellerProfileService{
         if (replacedLogo != null) {
             fileUploadService.deleteQuietly(replacedLogo);
         }
-        return sellerProfileMapper.toResponse(updated);
+        return withRating(updated);
+    }
+
+    /**
+     * Attaches the shop's star rating. Two aggregates rather than one row with both,
+     * because {@code AVG} over no reviews is null while {@code COUNT} is zero, and
+     * keeping them separate says that plainly instead of hiding it in a projection.
+     */
+    private SellerProfileResponse withRating(SellerProfile profile) {
+        return sellerProfileMapper.toResponseWithRating(
+                profile,
+                reviewRepository.averageRatingForSeller(profile.getSellerId()),
+                reviewRepository.countBySeller_SellerId(profile.getSellerId()));
     }
 
     /**

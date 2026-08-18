@@ -23,6 +23,14 @@ public interface ReviewService {
 
     Page<ReviewResponse> getSellerReviews(Pageable pageable);
 
+    /**
+     * Every review left on a named shop's listings, for its public shop page.
+     *
+     * @param sellerId the shop's Keycloak subject, the same id
+     *                 {@code GET /api/v1/sellers/{sellerId}} takes
+     */
+    Page<ReviewResponse> getReviewsForSeller(String sellerId, Pageable pageable);
+
     ReviewReplyResponse replyToReview(UUID reviewUuid, ReviewReplyRequest request);
 
     List<ReviewReplyResponse> getRepliesForReview(UUID reviewUuid);
