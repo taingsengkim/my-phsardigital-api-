@@ -64,6 +64,13 @@ public class SecurityConfig {
                         // later has to be opened up deliberately.
                         .requestMatchers(HttpMethod.GET,"/api/v1/reviews/sellers/me").authenticated()
                         .requestMatchers(HttpMethod.GET,"/api/v1/reviews/sellers/*").permitAll()
+                        // Shop pages had no rule at all and so fell through to
+                        // authenticated() — a storefront a logged-out visitor could not
+                        // open, while its reviews were public. /sellers/me is the one
+                        // that answers for the current token, so it goes first.
+                        .requestMatchers(HttpMethod.GET,"/api/v1/sellers/me").authenticated()
+                        .requestMatchers(HttpMethod.GET,"/api/v1/sellers/top").permitAll()
+                        .requestMatchers(HttpMethod.GET,"/api/v1/sellers/*","/api/v1/sellers/*/listings").permitAll()
                         // Ordered before the open /auth/** rule below: /auth/me answers
                         // for the current token, so it is the one auth endpoint that
                         // needs one. Registration stays anonymous.

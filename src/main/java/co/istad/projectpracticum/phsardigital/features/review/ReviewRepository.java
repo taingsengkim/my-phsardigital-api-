@@ -10,6 +10,9 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 
+import java.time.LocalDateTime;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -41,5 +44,33 @@ public interface ReviewRepository extends JpaRepository<Review , UUID> {
     Double averageRatingForSeller(@Param("sellerId") String sellerId);
 
     long countBySeller_SellerId(String sellerId);
+
+    /**
+     * Shops ranked by average score.
+     *
+     * <p>{@code HAVING} is what keeps the board honest: without a floor, one shop with
+     * a single five-star review outranks a shop with two hundred at 4.8.
+     *
+     * @return {@code [sellerId, averageRating, reviewCount]} per shop, best first
+     */
+    @Query("SELECT r.seller.sellerId, AVG(r.rating), COUNT(r) FROM Review r "
+            + "WHERE r.createdAt >= :since AND r.seller.isActive = true "
+            + "GROUP BY r.seller.sellerId "
+            + "HAVING COUNT(r) >= :minReviews "
+            + "ORDER BY AVG(r.rating) DESC")
+    List<Object[]> rankSellersByRating(@Param("since") LocalDateTime since,
+                                       @Param("minReviews") long minReviews,
+                                       Pageable pageable);
+
+    /**
+     * Ratings for a known set of shops, to fill in a board ranked on something else.
+     *
+     * @return {@code [sellerId, averageRating, reviewCount]}; unreviewed shops absent
+     */
+    @Query("SELECT r.seller.sellerId, AVG(r.rating), COUNT(r) FROM Review r "
+            + "WHERE r.createdAt >= :since AND r.seller.sellerId IN :sellerIds "
+            + "GROUP BY r.seller.sellerId")
+    List<Object[]> ratingsForSellers(@Param("since") LocalDateTime since,
+                                     @Param("sellerIds") Collection<String> sellerIds);
 
 }

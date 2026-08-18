@@ -6,6 +6,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -39,4 +42,42 @@ public interface PurchaseRepository extends JpaRepository<Purchase, UUID> {
      */
     @Query("SELECT COALESCE(SUM(p.totalPrice), 0) FROM Purchase p WHERE p.status = :status")
     Double sumTotalPriceByStatus(@Param("status") PurchaseStatus status);
+
+    /**
+     * Shops ranked by what their completed orders were worth.
+     *
+     * <p>Suspended shops are excluded in the query rather than filtered afterwards, so
+     * a limit of ten returns ten shops that can actually be visited.
+     *
+     * @return {@code [sellerId, revenue, orderCount]} per shop, best first
+     */
+    @Query("SELECT p.sellerProfile.sellerId, SUM(p.totalPrice), COUNT(p) FROM Purchase p "
+            + "WHERE p.status = :status AND p.createdAt >= :since AND p.sellerProfile.isActive = true "
+            + "GROUP BY p.sellerProfile.sellerId "
+            + "ORDER BY SUM(p.totalPrice) DESC")
+    List<Object[]> rankSellersByRevenue(@Param("status") PurchaseStatus status,
+                                        @Param("since") LocalDateTime since,
+                                        Pageable pageable);
+
+    /** As {@link #rankSellersByRevenue}, ordered by how many orders rather than their value. */
+    @Query("SELECT p.sellerProfile.sellerId, SUM(p.totalPrice), COUNT(p) FROM Purchase p "
+            + "WHERE p.status = :status AND p.createdAt >= :since AND p.sellerProfile.isActive = true "
+            + "GROUP BY p.sellerProfile.sellerId "
+            + "ORDER BY COUNT(p) DESC")
+    List<Object[]> rankSellersByOrders(@Param("status") PurchaseStatus status,
+                                       @Param("since") LocalDateTime since,
+                                       Pageable pageable);
+
+    /**
+     * The same totals for a known set of shops, to fill in the board when it was
+     * ranked on something else. One query for the whole page rather than one per row.
+     *
+     * @return {@code [sellerId, revenue, orderCount]}; shops with no orders are absent
+     */
+    @Query("SELECT p.sellerProfile.sellerId, SUM(p.totalPrice), COUNT(p) FROM Purchase p "
+            + "WHERE p.status = :status AND p.createdAt >= :since AND p.sellerProfile.sellerId IN :sellerIds "
+            + "GROUP BY p.sellerProfile.sellerId")
+    List<Object[]> salesForSellers(@Param("status") PurchaseStatus status,
+                                   @Param("since") LocalDateTime since,
+                                   @Param("sellerIds") Collection<String> sellerIds);
 }
