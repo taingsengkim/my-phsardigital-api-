@@ -77,14 +77,19 @@ public class PurchaseServiceImpl implements PurchaseService {
                                 + " (available " + listing.getStockQty() + ")");
             }
 
+            // Both are snapshotted: the sale can end tomorrow, and the order has to keep
+            // saying what was charged and what it would have cost.
+            double unitPrice = listing.effectivePrice();
+
             PurchaseItem item = new PurchaseItem();
             item.setPurchase(purchase);
             item.setListing(listing);
             item.setQuantity(cartItem.getQuantity());
-            item.setUnitPrice(listing.getPrice()); //snapsot price
+            item.setUnitPrice(unitPrice);
+            item.setUnitFullPrice(listing.getFullPrice());
             purchase.getItems().add(item);
 
-            total += listing.getPrice() * cartItem.getQuantity();
+            total += unitPrice * cartItem.getQuantity();
         }
 
         purchase.setTotalPrice(total);

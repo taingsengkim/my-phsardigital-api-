@@ -99,6 +99,9 @@ public interface ListingRepository extends JpaRepository<Listing, UUID>, JpaSpec
      * <p>{@code isActive} is checked for the same reason the browse query checks it:
      * suspending a shop leaves its listings {@code ACTIVE}, and a related strip would
      * quietly put them back in front of buyers.
+     *
+     * @param price the source listing's effective price, which is what nearness is
+     *              measured against
      */
     @Query("SELECT l FROM Listing l "
             + "JOIN FETCH l.category "
@@ -108,7 +111,7 @@ public interface ListingRepository extends JpaRepository<Listing, UUID>, JpaSpec
             + "AND l.uuid <> :excludeUuid "
             + "AND l.status = :status "
             + "AND s.isActive = true "
-            + "ORDER BY ABS(l.price - :price), l.sold DESC")
+            + "ORDER BY ABS(COALESCE(l.discountPrice, l.fullPrice) - :price), l.sold DESC")
     List<Listing> findCategoryPeers(@Param("category") Category category,
                                     @Param("excludeUuid") UUID excludeUuid,
                                     @Param("price") Double price,

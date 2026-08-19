@@ -19,6 +19,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.function.Consumer;
+
 @Service
 @RequiredArgsConstructor
 public class SellerProfileServiceImpl implements SellerProfileService{
@@ -85,15 +87,21 @@ public class SellerProfileServiceImpl implements SellerProfileService{
                     profile.setLongitude(coordinates.longitude());
                 });
 
-        // Resolved before the write so a logo belonging to somebody else fails the
+        // Resolved before the write so an image belonging to somebody else fails the
         // whole request instead of half-applying the rest of the patch.
-        FileUpload replacedLogo = applyLogo(request.logoObjectName(), profile, userId);
+        FileUpload replacedLogo = applyImage(
+                request.logoObjectName(), profile.getLogoFile(), profile::setLogoFile, userId);
+        FileUpload replacedCover = applyImage(
+                request.coverObjectName(), profile.getCoverFile(), profile::setCoverFile, userId);
 
         SellerProfile updated = sellerProfileRepository.saveAndFlush(profile);
 
-        // Flushed first, so the old row is no longer referenced when it is removed.
+        // Flushed first, so the old rows are no longer referenced when they are removed.
         if (replacedLogo != null) {
             fileUploadService.deleteQuietly(replacedLogo);
+        }
+        if (replacedCover != null) {
+            fileUploadService.deleteQuietly(replacedCover);
         }
         return withRatingForOwner(updated);
     }
@@ -119,20 +127,21 @@ public class SellerProfileServiceImpl implements SellerProfileService{
     }
 
     /**
-     * Points the profile at a new logo, if one was supplied.
+     * Points one of the shop's images — the logo or the cover — at a new file, if one
+     * was supplied.
      *
-     * @return the logo that was displaced and should now be deleted, or null when
+     * @return the file that was displaced and should now be deleted, or null when
      *         nothing changed
      */
-    private FileUpload applyLogo(String logoObjectName, SellerProfile profile, String ownerId) {
-        if (logoObjectName == null || logoObjectName.isBlank()) {
+    private FileUpload applyImage(String objectName, FileUpload previous,
+                                  Consumer<FileUpload> attach, String ownerId) {
+        if (objectName == null || objectName.isBlank()) {
             return null;
         }
-        FileUpload previous = profile.getLogoFile();
-        if (previous != null && logoObjectName.equals(previous.getObjectName())) {
+        if (previous != null && objectName.equals(previous.getObjectName())) {
             return null;
         }
-        profile.setLogoFile(fileUploadService.requireOwnedFile(logoObjectName, ownerId));
+        attach.accept(fileUploadService.requireOwnedFile(objectName, ownerId));
         return previous;
     }
 }

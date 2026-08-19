@@ -55,6 +55,7 @@ public class PurchaseMapper {
                 it.getListing().getUuid(),
                 it.getListing().getTitle(),
                 it.getQuantity(),
+                it.getUnitFullPrice(),
                 it.getUnitPrice(),
                 it.getUnitPrice() * it.getQuantity()
         );

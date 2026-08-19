@@ -40,8 +40,17 @@ public class Listing extends BasedEntity {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String description;
 
-    @Column(nullable = false)
-    private Double price;
+    /**
+     * The list price. Still the {@code price} column: renaming it under
+     * {@code ddl-auto: update} would add an empty {@code full_price} beside the
+     * populated {@code price} rather than move anything.
+     */
+    @Column(name = "price", nullable = false)
+    private Double fullPrice;
+
+    /** The sale price, or null when the listing is not discounted. */
+    @Column(name = "discount_price")
+    private Double discountPrice;
 
     @Column(nullable = false)
     private Integer stockQty;
@@ -109,5 +118,13 @@ public class Listing extends BasedEntity {
 //
 //    @Column(name = "review_count")
 //    private Integer reviewCount = 0;
+
+    /**
+     * What a buyer actually pays. Not a {@code get...} accessor, so neither Hibernate
+     * nor MapStruct mistakes it for a persistent property.
+     */
+    public Double effectivePrice() {
+        return discountPrice != null ? discountPrice : fullPrice;
+    }
 
 }

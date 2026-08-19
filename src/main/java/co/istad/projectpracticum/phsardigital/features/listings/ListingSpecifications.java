@@ -1,5 +1,8 @@
 package co.istad.projectpracticum.phsardigital.features.listings;
 
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.Expression;
+import jakarta.persistence.criteria.Root;
 import org.springframework.data.jpa.domain.Specification;
 
 import java.util.Collection;
@@ -57,11 +60,23 @@ final class ListingSpecifications {
                 builder.equal(root.get("sellerProfile").get("sellerId"), sellerId);
     }
 
+    /**
+     * Both price filters compare what the buyer would actually pay: capping a search at
+     * $10 is asking to see a $12 product discounted to $10. The coalesce is what keeps
+     * undiscounted listings in the results at all — {@code null >= 5} is unknown, not
+     * false.
+     */
     static Specification<Listing> pricedAtLeast(Double minPrice) {
-        return (root, query, builder) -> builder.greaterThanOrEqualTo(root.get("price"), minPrice);
+        return (root, query, builder) ->
+                builder.greaterThanOrEqualTo(effectivePrice(root, builder), minPrice);
     }
 
     static Specification<Listing> pricedAtMost(Double maxPrice) {
-        return (root, query, builder) -> builder.lessThanOrEqualTo(root.get("price"), maxPrice);
+        return (root, query, builder) ->
+                builder.lessThanOrEqualTo(effectivePrice(root, builder), maxPrice);
+    }
+
+    private static Expression<Double> effectivePrice(Root<Listing> root, CriteriaBuilder builder) {
+        return builder.coalesce(root.get("discountPrice"), root.get("fullPrice"));
     }
 }

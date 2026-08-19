@@ -97,6 +97,12 @@ public class ListingController {
         return listingService.update(uuid, request);
     }
 
+    /** Ends the sale. Its own route because PATCH reads a null field as "unchanged". */
+    @DeleteMapping("/{uuid}/discount")
+    public ListingResponse clearDiscount(@PathVariable UUID uuid) {
+        return listingService.clearDiscount(uuid);
+    }
+
     @PatchMapping("/{uuid}/thumbnail")
     public ListingResponse updateThumbnail(
             @PathVariable UUID uuid,

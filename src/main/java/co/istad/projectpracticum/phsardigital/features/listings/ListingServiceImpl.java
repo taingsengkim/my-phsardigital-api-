@@ -211,6 +211,8 @@ public class ListingServiceImpl implements ListingService{
         SellerProfile sellerProfile = sellerAccessGuard.requireActiveSeller(sellerId);
         subscriptionService.requirePostingAllowed(sellerId);
 
+        requireDiscountBelowList(request.fullPrice(), request.discountPrice());
+
         FileUpload thumbnailFile = fileUploadService.requireOwnedFile(request.thumbnailObjectName(), sellerId);
 
         Map<String, FileUpload> imageFiles = resolveImageFiles(request.images(), sellerId);
@@ -221,7 +223,8 @@ public class ListingServiceImpl implements ListingService{
         listing.setTitle(request.title());
         listing.setSlug(slug);
         listing.setDescription(request.description());
-        listing.setPrice(request.price());
+        listing.setFullPrice(request.fullPrice());
+        listing.setDiscountPrice(request.discountPrice());
         listing.setStockQty(request.stockQty());
         listing.setIsFeatured(request.isFeatured() != null ? request.isFeatured() : false);
         listing.setThumbnailFile(thumbnailFile);
@@ -275,8 +278,16 @@ public class ListingServiceImpl implements ListingService{
         if (request.description() != null) {
             listing.setDescription(request.description());
         }
-        if (request.price() != null) {
-            listing.setPrice(request.price());
+        // Checked against the state the listing ends up in, so dropping the list price
+        // under a discount that was already there is caught too.
+        if (request.fullPrice() != null || request.discountPrice() != null) {
+            Double fullPrice = request.fullPrice() != null ? request.fullPrice() : listing.getFullPrice();
+            Double discountPrice = request.discountPrice() != null
+                    ? request.discountPrice()
+                    : listing.getDiscountPrice();
+            requireDiscountBelowList(fullPrice, discountPrice);
+            listing.setFullPrice(fullPrice);
+            listing.setDiscountPrice(discountPrice);
         }
         if (request.stockQty() != null) {
             listing.setStockQty(request.stockQty());
@@ -301,6 +312,20 @@ public class ListingServiceImpl implements ListingService{
         }
         Listing updated = listingRepository.save(listing);
         return listingResponseFactory.one(updated);
+    }
+
+    @Override
+    @Transactional
+    public ListingResponse clearDiscount(UUID uuid) {
+        Listing listing = listingRepository.findByUuidWithDetails(uuid)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found"));
+        String currentSellerId = AuthUtils.extractUserId();
+        if (!listing.getSellerProfile().getSellerId().equals(currentSellerId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not allowed to update this listing.");
+        }
+        requireNotSuspended(listing);
+        listing.setDiscountPrice(null);
+        return listingResponseFactory.one(listingRepository.save(listing));
     }
 
     @Override
@@ -400,6 +425,16 @@ public class ListingServiceImpl implements ListingService{
         listingRepository.save(listing);
         fileUploadService.delete(objectName);
     }
+    /** A discount at or above the list price advertises a saving that is not one. */
+    private void requireDiscountBelowList(Double fullPrice, Double discountPrice) {
+        if (discountPrice != null && fullPrice != null && discountPrice >= fullPrice) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "The discount price (" + discountPrice + ") must be below the full price ("
+                            + fullPrice + "). To end the sale, use DELETE /api/v1/listings/"
+                            + "{uuid}/discount instead.");
+        }
+    }
+
     /**
      * A suspended listing is frozen for its seller: not editable, not re-photographed,
      * not deletable. Deleting especially — that would let a seller erase the listing an

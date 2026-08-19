@@ -31,4 +31,12 @@ public class PurchaseItem {
     // price frozen at checkout — NOT read back from the listing
     @Column(nullable = false)
     private Double unitPrice;
+
+    /**
+     * The list price it was bought against, frozen alongside {@code unitPrice} so the
+     * receipt can still show the saving after the sale ends. Null on orders placed
+     * before this column existed.
+     */
+    @Column(name = "unit_full_price")
+    private Double unitFullPrice;
 }

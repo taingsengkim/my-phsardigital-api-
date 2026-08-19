@@ -114,6 +114,16 @@ public interface ListingService {
      * @return the updated listing
      */
     ListingResponse update(UUID uuid, UpdateListingRequest request);
+
+    /**
+     * Ends the sale on a listing, putting it back at its full price. Separate from
+     * {@link #update}, where a null {@code discountPrice} means "leave it alone".
+     *
+     * @param uuid the unique identifier of the listing
+     * @return the updated listing, its {@code discountPrice} now null
+     */
+    ListingResponse clearDiscount(UUID uuid);
+
     /**
      * Updates the thumbnail image of an existing listing.
      *

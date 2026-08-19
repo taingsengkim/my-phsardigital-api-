@@ -13,9 +13,9 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * Detaches shop logos whose underlying file is being deleted, so removing a file
- * never trips the foreign key on {@code seller_profiles.logo_file_id} or
- * {@code seller_applications.logo_file_id}.
+ * Detaches shop logos and covers whose underlying file is being deleted, so removing a
+ * file never trips the foreign key on {@code seller_profiles.logo_file_id},
+ * {@code seller_profiles.cover_file_id} or {@code seller_applications.logo_file_id}.
  *
  * <p>Both tables are swept, not just the profile: an applicant can delete a logo
  * they uploaded while their application is still under review.
@@ -34,6 +34,12 @@ public class SellerProfileFileListener {
                 .findAllByLogoFile_ObjectName(event.objectName());
         for (SellerProfile profile : profiles) {
             profile.setLogoFile(null);
+        }
+
+        List<SellerProfile> covered = sellerRepository
+                .findAllByCoverFile_ObjectName(event.objectName());
+        for (SellerProfile profile : covered) {
+            profile.setCoverFile(null);
         }
 
         List<SellerApplication> applications = applicationRepository

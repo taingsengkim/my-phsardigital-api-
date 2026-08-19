@@ -63,6 +63,11 @@ public class SellerProfile extends BasedEntity {
     @JoinColumn(name = "logo_file_id")
     private FileUpload logoFile;
 
+    /** The banner across the top of the shop page, held on the same terms as the logo. */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "cover_file_id")
+    private FileUpload coverFile;
+
     /**
      * Shop pin, matching the precision {@code Address} uses for delivery
      * coordinates. Stored as the pair rather than only a Google Maps link so the

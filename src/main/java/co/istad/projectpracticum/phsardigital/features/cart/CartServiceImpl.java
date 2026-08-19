@@ -130,13 +130,16 @@ public class CartServiceImpl implements CartService {
         List<CartItemResponse> items = new ArrayList<>();
         double total = 0.0;
         for (CartItem it : cart.getItems()) {
-            double line = it.getListing().getPrice() * it.getQuantity();
+            // The basket has to total what checkout will charge.
+            double unitPrice = it.getListing().effectivePrice();
+            double line = unitPrice * it.getQuantity();
             total += line;
             items.add(new CartItemResponse(
                     it.getUuid(),
                     it.getListing().getUuid(),
                     it.getListing().getTitle(),
-                    it.getListing().getPrice(),
+                    it.getListing().getFullPrice(),
+                    unitPrice,
                     it.getQuantity(),
                     line
             ));

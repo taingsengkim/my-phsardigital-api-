@@ -21,7 +21,7 @@ class SellerProfileUpdateRequestValidationTest {
     private static SellerProfileUpdateRequest withBusinessName(String businessName) {
         return new SellerProfileUpdateRequest(
                 businessName, null, null, null, null, null, null,
-                null, null, null, null, null, null);
+                null, null, null, null, null, null, null);
     }
 
     @Test

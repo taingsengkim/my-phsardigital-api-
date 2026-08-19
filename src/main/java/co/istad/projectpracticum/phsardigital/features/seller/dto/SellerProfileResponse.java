@@ -20,6 +20,8 @@ public record SellerProfileResponse(
         String description,
         String logoObjectName,
         String logoUri,
+        String coverObjectName,
+        String coverUri,
         String address,
         String city,
         String province,

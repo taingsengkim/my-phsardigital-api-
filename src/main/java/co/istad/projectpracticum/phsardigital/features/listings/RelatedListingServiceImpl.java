@@ -108,7 +108,7 @@ public class RelatedListingServiceImpl implements RelatedListingService {
 
     private List<Listing> categoryPeersOf(Listing source, int wanted) {
         return listingRepository.findCategoryPeers(
-                source.getCategory(), source.getUuid(), source.getPrice(), BUYABLE, topOf(wanted));
+                source.getCategory(), source.getUuid(), source.effectivePrice(), BUYABLE, topOf(wanted));
     }
 
     private List<Listing> shopPeersOf(Listing source, int wanted) {
@@ -141,7 +141,8 @@ public class RelatedListingServiceImpl implements RelatedListingService {
                 listing.getUuid(),
                 listing.getTitle(),
                 listing.getSlug(),
-                listing.getPrice(),
+                listing.getFullPrice(),
+                listing.getDiscountPrice(),
                 listing.getStockQty(),
                 listing.getSold(),
                 fileUploadService.getPreviewUrl(listing.getThumbnailFile()),

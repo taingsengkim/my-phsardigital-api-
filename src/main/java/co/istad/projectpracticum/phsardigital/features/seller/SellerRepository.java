@@ -6,6 +6,8 @@ import java.util.List;
 
 public interface SellerRepository extends JpaRepository<SellerProfile, String> {
 
-    /** Backs the logo cleanup in {@code SellerProfileFileListener}. */
+    /** Both back the image cleanup in {@code SellerProfileFileListener}. */
     List<SellerProfile> findAllByLogoFile_ObjectName(String objectName);
+
+    List<SellerProfile> findAllByCoverFile_ObjectName(String objectName);
 }

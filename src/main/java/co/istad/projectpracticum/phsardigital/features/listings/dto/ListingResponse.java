@@ -11,6 +11,10 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * @param discountPrice the sale price, or null when the listing is not discounted. What
+ *                      a buyer pays is this when present, {@code fullPrice} otherwise
+ */
 public record ListingResponse(
         UUID uuid,
         SellerProfileSummaryResponse sellerProfile,
@@ -18,7 +22,8 @@ public record ListingResponse(
         String title,
         String slug,
         String description,
-        Double price,
+        Double fullPrice,
+        Double discountPrice,
         Integer stockQty,
         ListingStatus status,
         Boolean isFeatured,
@@ -42,7 +47,8 @@ public record ListingResponse(
      */
     public ListingResponse withRating(Double averageRating, Long reviewCount) {
         return new ListingResponse(
-                uuid, sellerProfile, category, title, slug, description, price, stockQty,
+                uuid, sellerProfile, category, title, slug, description,
+                fullPrice, discountPrice, stockQty,
                 status, isFeatured, thumbnailUri, sold, images, listingAttributes,
                 createdAt, lastModifiedAt, averageRating, reviewCount);
     }

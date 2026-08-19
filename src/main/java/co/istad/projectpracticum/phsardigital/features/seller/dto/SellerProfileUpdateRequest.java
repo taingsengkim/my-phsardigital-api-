@@ -36,10 +36,13 @@ public record SellerProfileUpdateRequest(
         /**
          * Object name of an already-uploaded public image. Replacing the logo deletes
          * the object behind the old one, so this is handled in the service rather than
-         * by the mapper.
+         * by the mapper. The cover below works the same way.
          */
         @Size(max = 512, message = "Logo object name must not exceed 512 characters")
         String logoObjectName,
+
+        @Size(max = 512, message = "Cover object name must not exceed 512 characters")
+        String coverObjectName,
 
         @Size(max = 2000, message = "Address must not exceed 2000 characters")
         String address,

@@ -91,6 +91,8 @@ public abstract class SellerProfileMapper {
                 profile.getDescription(),
                 profile.getLogoFile() != null ? profile.getLogoFile().getObjectName() : null,
                 fileUploadService.getPreviewUrl(profile.getLogoFile()),
+                profile.getCoverFile() != null ? profile.getCoverFile().getObjectName() : null,
+                fileUploadService.getPreviewUrl(profile.getCoverFile()),
                 profile.getAddress(),
                 profile.getCity(),
                 profile.getProvince(),
@@ -118,12 +120,13 @@ public abstract class SellerProfileMapper {
     }
 
     /**
-     * The logo is deliberately not mapped here: swapping it deletes the object
-     * behind the previous one, which has to happen after the row is flushed. The
+     * The logo and cover are deliberately not mapped here: swapping either deletes the
+     * object behind the previous one, which has to happen after the row is flushed. The
      * service owns that sequence.
      */
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
     @Mapping(target = "logoFile", ignore = true)
+    @Mapping(target = "coverFile", ignore = true)
     public abstract void updateFromRequest(SellerProfileUpdateRequest request,
                                            @MappingTarget SellerProfile sellerProfile);
 }
