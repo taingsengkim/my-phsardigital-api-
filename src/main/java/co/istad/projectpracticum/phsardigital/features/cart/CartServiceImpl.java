@@ -2,10 +2,13 @@ package co.istad.projectpracticum.phsardigital.features.cart;
 
 import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
 import co.istad.projectpracticum.phsardigital.features.cart.dto.*;
+import co.istad.projectpracticum.phsardigital.features.file.FileUploadService;
 import co.istad.projectpracticum.phsardigital.features.listings.Listing;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingRepository;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingStatus;
 import co.istad.projectpracticum.phsardigital.features.seller.SellerAccessGuard;
+import co.istad.projectpracticum.phsardigital.features.seller.SellerProfileMapper;
+import co.istad.projectpracticum.phsardigital.features.seller.dto.SellerProfileSummaryResponse;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -21,6 +24,8 @@ public class CartServiceImpl implements CartService {
     private final CartRepository cartRepository;
     private final ListingRepository listingRepository;
     private final SellerAccessGuard sellerAccessGuard;
+    private final SellerProfileMapper sellerProfileMapper;
+    private final FileUploadService fileUploadService;
 
     @Override
     public List<CartResponse> getMyCarts() {
@@ -105,10 +110,12 @@ public class CartServiceImpl implements CartService {
     public CartResponse removeItem(String sellerId, UUID itemUuid) {
         Cart cart = getOwnedCart(sellerId);
         cart.getItems().removeIf(i -> i.getUuid().equals(itemUuid));
-        // empty cart -> delete it so the shop slot is freed
+        // empty cart -> delete it so the shop slot is freed. The shop block is still
+        // answered, so the page that emptied it can keep its heading.
         if (cart.getItems().isEmpty()) {
+            SellerProfileSummaryResponse shop = sellerProfileMapper.toSummary(cart.getSellerProfile());
             cartRepository.delete(cart);
-            return new CartResponse(null, sellerId, new ArrayList<>(), 0.0);
+            return new CartResponse(null, shop, new ArrayList<>(), 0.0);
         }
         return toResponse(cartRepository.save(cart));
     }
@@ -130,22 +137,24 @@ public class CartServiceImpl implements CartService {
         List<CartItemResponse> items = new ArrayList<>();
         double total = 0.0;
         for (CartItem it : cart.getItems()) {
+            Listing listing = it.getListing();
             // The basket has to total what checkout will charge.
-            double unitPrice = it.getListing().effectivePrice();
+            double unitPrice = listing.effectivePrice();
             double line = unitPrice * it.getQuantity();
             total += line;
             items.add(new CartItemResponse(
                     it.getUuid(),
-                    it.getListing().getUuid(),
-                    it.getListing().getTitle(),
-                    it.getListing().getFullPrice(),
+                    listing.getUuid(),
+                    listing.getTitle(),
+                    fileUploadService.getPreviewUrl(listing.getThumbnailFile()),
+                    listing.getFullPrice(),
                     unitPrice,
                     it.getQuantity(),
                     line
             ));
         }
         return new CartResponse(cart.getUuid(),
-                cart.getSellerProfile().getSellerId(),
+                sellerProfileMapper.toSummary(cart.getSellerProfile()),
                 items, total
         );
     }
