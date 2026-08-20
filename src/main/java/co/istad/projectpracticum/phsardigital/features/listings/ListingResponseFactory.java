@@ -1,5 +1,7 @@
 package co.istad.projectpracticum.phsardigital.features.listings;
 
+import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
+import co.istad.projectpracticum.phsardigital.features.favorites.FavoriteRepository;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingResponse;
 import co.istad.projectpracticum.phsardigital.features.review.ReviewRepository;
 import lombok.RequiredArgsConstructor;
@@ -11,6 +13,7 @@ import java.math.RoundingMode;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -23,29 +26,50 @@ public class ListingResponseFactory {
 
     private final ListingMapper listingMapper;
     private final ReviewRepository reviewRepository;
+    private final FavoriteRepository favoriteRepository;
 
     public ListingResponse one(Listing listing) {
         return listingMapper.toResponse(listing).withRating(
                 round(reviewRepository.averageRatingForListing(listing.getUuid())),
-                reviewRepository.countByListing_Uuid(listing.getUuid()));
+                reviewRepository.countByListing_Uuid(listing.getUuid()),
+                favouritedAmong(List.of(listing.getUuid())).contains(listing.getUuid()));
     }
 
     public Page<ListingResponse> page(Page<Listing> listings) {
         Map<UUID, Rating> ratings = ratingsFor(listings.getContent());
-        return listings.map(listing -> attach(listing, ratings));
+        Set<UUID> favourited = favouritedAmong(uuidsOf(listings.getContent()));
+        return listings.map(listing -> attach(listing, ratings, favourited));
     }
 
     public List<ListingResponse> all(List<Listing> listings) {
         Map<UUID, Rating> ratings = ratingsFor(listings);
-        return listings.stream().map(listing -> attach(listing, ratings)).toList();
+        Set<UUID> favourited = favouritedAmong(uuidsOf(listings));
+        return listings.stream().map(listing -> attach(listing, ratings, favourited)).toList();
     }
 
-    private ListingResponse attach(Listing listing, Map<UUID, Rating> ratings) {
+    private ListingResponse attach(Listing listing, Map<UUID, Rating> ratings, Set<UUID> favourited) {
         // Absent means nobody has reviewed it: no average at all, and a count of zero.
         Rating rating = ratings.get(listing.getUuid());
         return listingMapper.toResponse(listing).withRating(
                 rating == null ? null : round(rating.average()),
-                rating == null ? 0L : rating.count());
+                rating == null ? 0L : rating.count(),
+                favourited.contains(listing.getUuid()));
+    }
+
+    /**
+     * Which of these the caller has saved. Empty for an anonymous visitor rather than a
+     * failed lookup — the catalogue is public, and asking who is browsing must not be
+     * what turns a page into a 403.
+     */
+    private Set<UUID> favouritedAmong(List<UUID> uuids) {
+        if (uuids.isEmpty() || !AuthUtils.isAuthenticated()) {
+            return Set.of();
+        }
+        return Set.copyOf(favoriteRepository.findFavouritedUuids(AuthUtils.extractUserId(), uuids));
+    }
+
+    private static List<UUID> uuidsOf(List<Listing> listings) {
+        return listings.stream().map(Listing::getUuid).toList();
     }
 
     private Map<UUID, Rating> ratingsFor(List<Listing> listings) {

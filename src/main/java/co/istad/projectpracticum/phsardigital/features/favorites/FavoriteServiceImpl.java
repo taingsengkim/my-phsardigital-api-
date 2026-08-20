@@ -3,8 +3,8 @@ package co.istad.projectpracticum.phsardigital.features.favorites;
 
 import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
 import co.istad.projectpracticum.phsardigital.features.listings.Listing;
-import co.istad.projectpracticum.phsardigital.features.listings.ListingMapper;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingRepository;
+import co.istad.projectpracticum.phsardigital.features.listings.ListingResponseFactory;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingResponse;
 import co.istad.projectpracticum.phsardigital.features.user.UserProfile;
 import co.istad.projectpracticum.phsardigital.features.user.UserProfileRepository;
@@ -26,7 +26,7 @@ public class FavoriteServiceImpl implements FavoriteService {
     private final FavoriteRepository favoriteRepository;
     private final UserProfileRepository userProfileRepository;
     private final ListingRepository listingRepository;
-    private final ListingMapper listingMapper;
+    private final ListingResponseFactory listingResponseFactory;
 
     @Override
     public Page<ListingResponse> getFavorites(Pageable pageable) {
@@ -39,12 +39,9 @@ public class FavoriteServiceImpl implements FavoriteService {
         // 2. Fetch paginated favorites
         Page<Favorite> favoritesPage = favoriteRepository.findByUserProfile(userProfile, pageable);
 
-        // 3. Map each Favorite to ListingResponse
-        return favoritesPage.map(favorite -> {
-            Listing listing = favorite.getListing();
-            return listingMapper.toResponse(listing);
-
-        });
+        // 3. Through the factory, not the mapper, so a saved product carries the same
+        // rating and isFavorite the catalogue gave it rather than three nulls.
+        return listingResponseFactory.page(favoritesPage.map(Favorite::getListing));
     }
 
     @Override
