@@ -1,6 +1,8 @@
 package co.istad.projectpracticum.phsardigital.features.auth;
 
 import co.istad.projectpracticum.phsardigital.config.security.KeycloakAdminProps;
+import co.istad.projectpracticum.phsardigital.core.ratelimit.RateLimiter;
+import co.istad.projectpracticum.phsardigital.features.auth.dto.AccountEmailRequest;
 import co.istad.projectpracticum.phsardigital.features.auth.dto.RegisterRequest;
 import co.istad.projectpracticum.phsardigital.features.auth.dto.RegisterResponse;
 import co.istad.projectpracticum.phsardigital.features.seller.SellerRepository;
@@ -29,13 +31,18 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.net.URI;
+import java.time.Duration;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -44,6 +51,7 @@ class AuthServiceImplTest {
 
     private static final String REALM = "phsardigital";
     private static final String USER_ID = "created-user-id";
+    private static final String EMAIL = "sokha@example.com";
 
     @Mock
     private Keycloak keycloak;
@@ -80,8 +88,11 @@ class AuthServiceImplTest {
 
     @BeforeEach
     void setUp() {
+        // A real limiter rather than a mock: its whole job is to say no on the nth
+        // call, and a stub that has to be told when to do that tests nothing.
         service = new AuthServiceImpl(keycloak, userProfileRepository, props, authMapper,
-                userProvisioningService, userProfileMapper, sellerRepository);
+                userProvisioningService, userProfileMapper, sellerRepository,
+                new RateLimiter(1, Duration.ofHours(1), 100));
         when(props.getTargetRealm()).thenReturn(REALM);
         when(keycloak.realm(REALM)).thenReturn(realmResource);
         when(realmResource.users()).thenReturn(usersResource);
@@ -150,6 +161,149 @@ class AuthServiceImplTest {
 
         assertThat(result).isEqualTo(expected);
         verify(userResource, never()).remove();
+    }
+
+    // ------------------------------------------------- verification email resend
+
+    @Test
+    void resendVerificationEmailSendsWhenTheAccountIsUnverified() {
+        prepareLookup(account(false, true));
+
+        service.resendVerificationEmail(new AccountEmailRequest(EMAIL));
+
+        verify(userResource).sendVerifyEmail();
+    }
+
+    @Test
+    void resendVerificationEmailLooksTheAddressUpInLowercase() {
+        prepareLookup(account(false, true));
+
+        service.resendVerificationEmail(new AccountEmailRequest("  Sokha@Example.COM "));
+
+        // Keycloak stores addresses lowercased, so anything else finds no account and
+        // the user is told their mail is on the way when it never will be.
+        verify(usersResource).searchByEmail(EMAIL, true);
+        verify(userResource).sendVerifyEmail();
+    }
+
+    @Test
+    void resendVerificationEmailDoesNothingWhenNoAccountHasTheAddress() {
+        when(usersResource.searchByEmail(anyString(), anyBoolean())).thenReturn(List.of());
+
+        service.resendVerificationEmail(new AccountEmailRequest(EMAIL));
+
+        verify(usersResource, never()).get(anyString());
+    }
+
+    @Test
+    void resendVerificationEmailDoesNothingWhenTheAddressIsAlreadyVerified() {
+        when(usersResource.searchByEmail(anyString(), anyBoolean()))
+                .thenReturn(List.of(account(true, true)));
+
+        service.resendVerificationEmail(new AccountEmailRequest(EMAIL));
+
+        verify(usersResource, never()).get(anyString());
+    }
+
+    @Test
+    void resendVerificationEmailIsDroppedSilentlyOnceTheAddressIsOverItsLimit() {
+        prepareLookup(account(false, true));
+
+        service.resendVerificationEmail(new AccountEmailRequest(EMAIL));
+        // The limiter in setUp allows exactly one, so this is the one over.
+        service.resendVerificationEmail(new AccountEmailRequest(EMAIL));
+
+        // Dropped, not refused: throwing here would answer "does this address exist"
+        // for anyone willing to send two requests.
+        verify(userResource, times(1)).sendVerifyEmail();
+    }
+
+    @Test
+    void aCallThatSendsNoEmailDoesNotSpendTheAddressAllowance() {
+        // Already verified on the first call, unverified on the second.
+        when(usersResource.searchByEmail(anyString(), anyBoolean()))
+                .thenReturn(List.of(account(true, true)))
+                .thenReturn(List.of(account(false, true)));
+        when(usersResource.get(USER_ID)).thenReturn(userResource);
+
+        service.resendVerificationEmail(new AccountEmailRequest(EMAIL));
+        service.resendVerificationEmail(new AccountEmailRequest(EMAIL));
+
+        // The limiter in setUp allows exactly one mail per address, so the second call
+        // only gets through if the first spent nothing. That is what stops a stranger
+        // draining somebody's allowance — and with it their only route back into the
+        // account — by naming their address a few times.
+        verify(userResource).sendVerifyEmail();
+    }
+
+    @Test
+    void resendVerificationEmailReturnsNormallyWhenKeycloakIsUnreachable() {
+        prepareLookup(account(false, true));
+        doThrow(new RuntimeException("keycloak down")).when(userResource).sendVerifyEmail();
+
+        // The caller is given the same fixed reply either way, so the only wrong
+        // behaviour available here is to let the failure out.
+        service.resendVerificationEmail(new AccountEmailRequest(EMAIL));
+    }
+
+    // ------------------------------------------------------------ password reset
+
+    @Test
+    void passwordResetSendsTheUpdatePasswordAction() {
+        prepareLookup(account(true, true));
+
+        service.requestPasswordReset(new AccountEmailRequest(EMAIL));
+
+        verify(userResource).executeActionsEmail(List.of("UPDATE_PASSWORD"));
+    }
+
+    @Test
+    void passwordResetDoesNothingWhenNoAccountHasTheAddress() {
+        when(usersResource.searchByEmail(anyString(), anyBoolean())).thenReturn(List.of());
+
+        service.requestPasswordReset(new AccountEmailRequest(EMAIL));
+
+        verify(usersResource, never()).get(anyString());
+    }
+
+    @Test
+    void passwordResetDoesNothingWhenTheAccountIsDisabled() {
+        when(usersResource.searchByEmail(anyString(), anyBoolean()))
+                .thenReturn(List.of(account(true, false)));
+
+        service.requestPasswordReset(new AccountEmailRequest(EMAIL));
+
+        // A suspended account must not be able to reset its way back in.
+        verify(usersResource, never()).get(anyString());
+    }
+
+    @Test
+    void passwordResetAndVerificationAreLimitedSeparately() {
+        prepareLookup(account(false, true));
+
+        service.resendVerificationEmail(new AccountEmailRequest(EMAIL));
+        service.requestPasswordReset(new AccountEmailRequest(EMAIL));
+
+        // One limiter shared by both, but keyed per action: spending the verification
+        // budget must not lock the same user out of resetting their password.
+        verify(userResource).sendVerifyEmail();
+        verify(userResource).executeActionsEmail(List.of("UPDATE_PASSWORD"));
+    }
+
+    // ----------------------------------------------------------------- fixtures
+
+    private void prepareLookup(UserRepresentation user) {
+        when(usersResource.searchByEmail(anyString(), anyBoolean())).thenReturn(List.of(user));
+        when(usersResource.get(USER_ID)).thenReturn(userResource);
+    }
+
+    private UserRepresentation account(boolean emailVerified, boolean enabled) {
+        UserRepresentation user = new UserRepresentation();
+        user.setId(USER_ID);
+        user.setEmail(EMAIL);
+        user.setEmailVerified(emailVerified);
+        user.setEnabled(enabled);
+        return user;
     }
 
     private void prepareSuccessfulKeycloakCreation() {

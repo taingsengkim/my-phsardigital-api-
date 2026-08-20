@@ -1,9 +1,12 @@
 package co.istad.projectpracticum.phsardigital.config.security;
 
 import co.istad.projectpracticum.phsardigital.core.exception.RestSecurityErrorHandler;
+import co.istad.projectpracticum.phsardigital.core.ratelimit.RateLimiter;
 import co.istad.projectpracticum.phsardigital.features.user.UserProvisioningService;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.http.HttpMethod;
@@ -17,6 +20,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.servlet.HandlerExceptionResolver;
 
 import java.util.Collection;
 import java.util.List;
@@ -31,7 +35,10 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain apiSecurity(HttpSecurity http,
                                            RestSecurityErrorHandler securityErrorHandler,
-                                           UserProvisioningService userProvisioningService) {
+                                           UserProvisioningService userProvisioningService,
+                                           AuthRateLimitProps rateLimitProps,
+                                           @Lazy @Qualifier("handlerExceptionResolver")
+                                           HandlerExceptionResolver exceptionResolver) {
         //Security Mechani
         // Both the resource server and the chain itself are pointed at the same
         // handler, otherwise a rejected token returns an empty body while every
@@ -124,6 +131,20 @@ public class SecurityConfig {
         http.addFilterAfter(new UserProvisioningFilter(userProvisioningService),
                 BearerTokenAuthenticationFilter.class);
 
+        // Ahead of token authentication, so a caller flooding the anonymous auth
+        // endpoints is turned away before anything is parsed or looked up. Skipped
+        // entirely when disabled, rather than installed with an infinite limit, so
+        // there is no doubt about what the flag does.
+        if (rateLimitProps.isEnabled()) {
+            http.addFilterBefore(
+                    new AuthRateLimitFilter(
+                            new RateLimiter(rateLimitProps.getRequests(),
+                                    rateLimitProps.getPeriod(),
+                                    rateLimitProps.getMaxTrackedKeys()),
+                            exceptionResolver),
+                    BearerTokenAuthenticationFilter.class);
+        }
+
         http.sessionManagement(state ->
                 state.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
 
@@ -131,6 +152,24 @@ public class SecurityConfig {
         http.formLogin(AbstractHttpConfigurer::disable);
 
         return http.build();
+    }
+
+    /**
+     * The second of the two limits, keyed by email address rather than by caller.
+     *
+     * <p>A bean because {@code AuthServiceImpl} is the only place that knows which
+     * address a request names — the filter would have to read and re-buffer the
+     * request body to find out. It is the sole {@link RateLimiter} bean; the
+     * per-address limiter the filter uses is constructed inline above, since nothing
+     * else needs a handle on it and two beans of one type would only invite an
+     * ambiguous injection later.
+     */
+    @Bean
+    public RateLimiter authEmailRateLimiter(AuthRateLimitProps rateLimitProps) {
+        return new RateLimiter(
+                rateLimitProps.getEmailsPerAddress(),
+                rateLimitProps.getEmailPeriod(),
+                rateLimitProps.getMaxTrackedKeys());
     }
 
     /**

@@ -2,6 +2,8 @@ package co.istad.projectpracticum.phsardigital.features.auth;
 
 import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
 import co.istad.projectpracticum.phsardigital.config.security.KeycloakAdminProps;
+import co.istad.projectpracticum.phsardigital.core.ratelimit.RateLimiter;
+import co.istad.projectpracticum.phsardigital.features.auth.dto.AccountEmailRequest;
 import co.istad.projectpracticum.phsardigital.features.auth.dto.MeResponse;
 import co.istad.projectpracticum.phsardigital.features.auth.dto.RegisterRequest;
 import co.istad.projectpracticum.phsardigital.features.auth.dto.RegisterResponse;
@@ -29,6 +31,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 @Service
@@ -36,6 +39,7 @@ import java.util.Map;
 @Slf4j
 public class AuthServiceImpl implements AuthService{
     private static final String VERIFY_EMAIL_ACTION = "VERIFY_EMAIL";
+    private static final String UPDATE_PASSWORD_ACTION = "UPDATE_PASSWORD";
 
     private final Keycloak keycloak;
     private final UserProfileRepository userProfileRepository;
@@ -44,6 +48,7 @@ public class AuthServiceImpl implements AuthService{
     private final UserProvisioningService userProvisioningService;
     private final UserProfileMapper userProfileMapper;
     private final SellerRepository sellerRepository;
+    private final RateLimiter authEmailRateLimiter;
 
     @Override
     @Transactional
@@ -91,7 +96,7 @@ public class AuthServiceImpl implements AuthService{
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Passwords do not match.");
         }
 
-        UsersResource usersResource = keycloak.realm(props.getTargetRealm()).users();
+        UsersResource usersResource = keycloakUsers();
         UserRepresentation userRepresentation = new UserRepresentation();
         userRepresentation.setUsername(request.username().trim());
         userRepresentation.setEmail(request.email().trim());
@@ -147,6 +152,104 @@ public class AuthServiceImpl implements AuthService{
 
         userRepresentation.setId(createdUserId);
         return authMapper.toRegisterResponse(request, userRepresentation);
+    }
+
+    @Override
+    public void resendVerificationEmail(AccountEmailRequest request) {
+        String email = normalizeEmail(request.email());
+        try {
+            UserRepresentation user = findByEmail(email);
+            if (user == null) {
+                return;
+            }
+            if (Boolean.TRUE.equals(user.isEmailVerified())) {
+                // Sending anyway would let anyone who knows the address post a
+                // "verify your account" mail to it whenever they liked.
+                log.debug("Verification email not re-sent for {}: already verified", user.getId());
+                return;
+            }
+            if (!withinEmailBudget(VERIFY_EMAIL_ACTION, email)) {
+                return;
+            }
+            keycloakUsers().get(user.getId()).sendVerifyEmail();
+            log.info("Re-sent the verification email for user {}", user.getId());
+        } catch (Exception failure) {
+            // The reply is fixed, so a failure here has nowhere to go but the log.
+            log.error("Could not re-send a verification email", failure);
+        }
+    }
+
+    @Override
+    public void requestPasswordReset(AccountEmailRequest request) {
+        String email = normalizeEmail(request.email());
+        try {
+            UserRepresentation user = findByEmail(email);
+            if (user == null) {
+                return;
+            }
+            if (!Boolean.TRUE.equals(user.isEnabled())) {
+                // A suspended account gets no route back in; lifting the suspension is
+                // an admin's decision, not something a reset link should work around.
+                log.info("Password reset not sent for {}: the account is disabled", user.getId());
+                return;
+            }
+            if (!withinEmailBudget(UPDATE_PASSWORD_ACTION, email)) {
+                return;
+            }
+            keycloakUsers().get(user.getId()).executeActionsEmail(List.of(UPDATE_PASSWORD_ACTION));
+            log.info("Sent a password reset email for user {} (provider: {})",
+                    user.getId(), user.getFederationLink());
+        } catch (Exception failure) {
+            log.error("Could not send a password reset email", failure);
+        }
+    }
+
+    /**
+     * Whether this address has any of its mail allowance left for this action.
+     *
+     * <p>Checked immediately before sending rather than on the way in, which matters
+     * more than it looks. Spending a token per <em>request</em> would let anyone drain
+     * a chosen victim's allowance with three cheap calls naming an address they never
+     * receive mail for, locking the real owner out of the only route back into their
+     * account. Spending it per <em>mail</em> means the only way to exhaust somebody's
+     * budget is to actually send them the mail, which is the thing this limit exists
+     * to cap. It gives up nothing in return: an address-keyed limit cannot slow down
+     * enumeration anyway, because a caller walking a list of addresses gets a fresh
+     * bucket for every one of them. Stopping that is the per-caller limit's job.
+     *
+     * <p>Over budget is a silent drop, never an error. A refusal would only ever come
+     * back for an address that had already triggered a mail — an account, in other
+     * words — and telling a stranger that much is the one thing these endpoints are
+     * built not to do.
+     */
+    private boolean withinEmailBudget(String action, String email) {
+        if (authEmailRateLimiter.tryAcquire(action + ":" + email)) {
+            return true;
+        }
+        log.info("Dropped a {} email: the address is over its allowance", action);
+        return false;
+    }
+
+    /**
+     * @return the account holding this address, or null when no account does.
+     * Exact rather than a prefix search, so {@code sok@example.com} cannot be used to
+     * fish for {@code sokha@example.com}.
+     */
+    private UserRepresentation findByEmail(String email) {
+        List<UserRepresentation> matches = keycloakUsers().searchByEmail(email, true);
+        return matches.isEmpty() ? null : matches.getFirst();
+    }
+
+    /**
+     * Keycloak stores addresses lowercased, so a search for {@code Sokha@Example.com}
+     * finds nothing while the same account is reachable as {@code sokha@example.com}.
+     */
+    private String normalizeEmail(String email) {
+        return email.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private UsersResource keycloakUsers() {
+        return keycloak.realm(props.getTargetRealm()).users();
     }
 
     private String createKeycloakUser(UsersResource usersResource, UserRepresentation userRepresentation) {

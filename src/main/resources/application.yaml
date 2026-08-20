@@ -77,6 +77,23 @@ keycloak:
 app:
   cors:
     allowed-origin-patterns: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+  auth:
+    # Everything under /api/v1/auth is anonymous, and every POST there is expensive:
+    # registration makes three Keycloak admin calls, and the other two exist to send
+    # mail to an address the caller names. Both limits below are per process — behind
+    # two instances the effective rate is roughly doubled.
+    rate-limit:
+      enabled: ${AUTH_RATE_LIMIT_ENABLED:true}
+      # Per client address, over every POST under /api/v1/auth. Five back to back
+      # leaves room for a mistyped form; the bucket refills over the period.
+      requests: ${AUTH_RATE_LIMIT_REQUESTS:5}
+      period: ${AUTH_RATE_LIMIT_PERIOD:1m}
+      # Per email address, counted separately for verification and for reset. Stops a
+      # caller spread across many source addresses from burying one person's inbox,
+      # which the per-address limit above cannot see.
+      emails-per-address: ${AUTH_RATE_LIMIT_EMAILS_PER_ADDRESS:3}
+      email-period: ${AUTH_RATE_LIMIT_EMAIL_PERIOD:1h}
+      max-tracked-keys: ${AUTH_RATE_LIMIT_MAX_TRACKED_KEYS:50000}
   maps:
     # Shop locations can be set by pasting a Google Maps link. The mobile app's Share
     # button produces a maps.app.goo.gl redirect, which has to be followed to see the
