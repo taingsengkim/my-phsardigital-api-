@@ -14,14 +14,26 @@ import co.istad.projectpracticum.phsardigital.features.subscription.Subscription
 import co.istad.projectpracticum.phsardigital.features.user.UserProfileRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+
+import static co.istad.projectpracticum.phsardigital.features.admin.dto.AdminDashboardSummaryResponse.ApplicationSummary;
+import static co.istad.projectpracticum.phsardigital.features.admin.dto.AdminDashboardSummaryResponse.ListingSummary;
+import static co.istad.projectpracticum.phsardigital.features.admin.dto.AdminDashboardSummaryResponse.Money;
+import static co.istad.projectpracticum.phsardigital.features.admin.dto.AdminDashboardSummaryResponse.PlanSubscriptionCount;
+import static co.istad.projectpracticum.phsardigital.features.admin.dto.AdminDashboardSummaryResponse.PurchaseSummary;
+import static co.istad.projectpracticum.phsardigital.features.admin.dto.AdminDashboardSummaryResponse.SellerSummary;
+import static co.istad.projectpracticum.phsardigital.features.admin.dto.AdminDashboardSummaryResponse.SubscriptionSummary;
+import static co.istad.projectpracticum.phsardigital.features.admin.dto.AdminDashboardSummaryResponse.UserSummary;
 
 @Service
 @RequiredArgsConstructor
@@ -29,6 +41,7 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
 
     /** The only order state whose money has actually changed hands. */
     private static final PurchaseStatus SETTLED = PurchaseStatus.COMPLETED;
+    private static final String MARKETPLACE_CURRENCY_CODE = "USD";
 
     private final UserProfileRepository userRepository;
     private final SellerProfileRepository sellerProfileRepository;
@@ -36,51 +49,73 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
     private final SellerApplicationRepository applicationRepository;
     private final PurchaseRepository purchaseRepository;
     private final SellerSubscriptionRepository subscriptionRepository;
+    private final Clock clock;
 
-    /** One transaction around the lot, so the cards cannot contradict each other. */
+    /**
+     * PostgreSQL's repeatable-read snapshot keeps independently aggregated cards from
+     * observing different commits during the same response.
+     */
     @Override
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public AdminDashboardSummaryResponse getSummary() {
-        LocalDateTime now = LocalDateTime.now();
-        Map<SubscriptionPlan, Long> byPlan = activeSubscriptionsByPlan(now);
+        // The first query establishes the database snapshot. Capture the public
+        // timestamp immediately afterwards from an injectable clock.
+        long totalUsers = userRepository.count();
+        Instant asOf = clock.instant();
+        LocalDateTime subscriptionEvaluationTime = LocalDateTime.ofInstant(asOf, clock.getZone());
+        List<PlanSubscriptionCount> byPlan = activeSubscriptionsByPlan(
+                subscriptionEvaluationTime);
 
         return new AdminDashboardSummaryResponse(
-                userRepository.count(),
-                sellerProfileRepository.count(),
-                sellerProfileRepository.countByIsActiveTrue(),
-                listingRepository.count(),
-                listingRepository.countByStatus(ListingStatus.ACTIVE),
-                applicationRepository.countByStatus(ApplicationStatus.PENDING),
-                purchaseRepository.countByStatus(SETTLED),
-                money(purchaseRepository.sumTotalPriceByStatus(SETTLED)),
-                byPlan.values().stream().mapToLong(Long::longValue).sum(),
-                byPlan,
-                now);
+                new UserSummary(totalUsers),
+                new SellerSummary(
+                        sellerProfileRepository.count(),
+                        sellerProfileRepository.countByIsActiveTrue()),
+                new ListingSummary(
+                        listingRepository.count(),
+                        listingRepository.countByStatusAndSellerProfile_IsActiveTrue(
+                                ListingStatus.ACTIVE)),
+                new ApplicationSummary(
+                        applicationRepository.countByStatus(ApplicationStatus.PENDING)),
+                new PurchaseSummary(
+                        purchaseRepository.countByStatus(SETTLED),
+                        new Money(completedGmv(), MARKETPLACE_CURRENCY_CODE)),
+                new SubscriptionSummary(byPlan),
+                asOf);
     }
 
     /**
      * Seeded with every plan, so one dropping to zero subscribers stays in the
      * response instead of disappearing from the chart.
      */
-    private Map<SubscriptionPlan, Long> activeSubscriptionsByPlan(LocalDateTime now) {
+    private List<PlanSubscriptionCount> activeSubscriptionsByPlan(LocalDateTime now) {
         Map<SubscriptionPlan, Long> counts = new EnumMap<>(SubscriptionPlan.class);
         for (SubscriptionPlan plan : SubscriptionPlan.values()) {
             counts.put(plan, 0L);
         }
 
-        List<Object[]> rows = subscriptionRepository.countActiveByPlan(SubscriptionStatus.ACTIVE, now);
+        List<Object[]> rows = subscriptionRepository.countActiveByPlan(
+                SubscriptionStatus.ACTIVE, now);
         for (Object[] row : rows) {
-            counts.put((SubscriptionPlan) row[0], (Long) row[1]);
+            counts.put((SubscriptionPlan) row[0], ((Number) row[1]).longValue());
         }
-        return counts;
+
+        return Arrays.stream(SubscriptionPlan.values())
+                .map(plan -> new PlanSubscriptionCount(
+                        plan.name(),
+                        plan.getDisplayName(),
+                        counts.get(plan)))
+                .toList();
     }
 
     /**
-     * {@code Purchase.totalPrice} is a {@code Double}, so the raw sum drifts —
-     * rounding here papers over a column that should be {@code BigDecimal}.
+     * The legacy purchase column is floating point. The repository casts every row
+     * to a two-decimal PostgreSQL numeric before summing, which gives the dashboard a
+     * deterministic cent total. A versioned schema migration is still required to
+     * make prices exact throughout catalogue, cart, checkout, and reporting flows.
      */
-    private static BigDecimal money(Double total) {
-        return BigDecimal.valueOf(total == null ? 0d : total)
-                .setScale(2, RoundingMode.HALF_UP);
+    private BigDecimal completedGmv() {
+        BigDecimal total = purchaseRepository.sumRoundedTotalPriceByStatus(SETTLED.name());
+        return total == null ? BigDecimal.ZERO : total;
     }
 }

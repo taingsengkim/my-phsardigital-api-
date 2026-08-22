@@ -1,5 +1,6 @@
 package co.istad.projectpracticum.phsardigital.features.listings;
 
+import co.istad.projectpracticum.phsardigital.features.listings.dto.AttributeFilter;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingCreateRequest;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingFilter;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingResponse;
@@ -36,6 +37,11 @@ public class ListingController {
      * stays admin-only — it is the moderation view, on its own unfiltered path.
      *
      * @param sort {@code field,direction}, e.g. {@code price,asc}
+     * @param attr repeated {@code key:value} facets drawn from the category's attribute
+     *             schema, e.g. {@code ?attr=ram:8 GB&attr=panel:AMOLED}. Different keys
+     *             narrow the search together; repeats of one key widen it. The schema a
+     *             storefront draws its facet panel from is at
+     *             {@code GET /api/v1/categories/slug/{slug}/attributes}
      */
     @GetMapping
     public Page<ListingResponse> getAll(@RequestParam(required = false) String status,
@@ -45,12 +51,14 @@ public class ListingController {
                                         @RequestParam(required = false) String sellerId,
                                         @RequestParam(required = false) Double minPrice,
                                         @RequestParam(required = false) Double maxPrice,
+                                        @RequestParam(required = false) List<String> attr,
                                         @RequestParam(required = false) String sort,
                                         @RequestParam(defaultValue = "0") Integer pageNumber,
                                         @RequestParam(defaultValue = "20") Integer pageSize) {
         if (status == null || status.isBlank()) {
             ListingFilter filter = new ListingFilter(
-                    categoryUuid, categorySlug, search, sellerId, minPrice, maxPrice);
+                    categoryUuid, categorySlug, search, sellerId, minPrice, maxPrice,
+                    AttributeFilter.parse(attr));
             return listingService.getAll(filter, pageNumber, pageSize, sort); // public, ACTIVE-only
         }
         return listingService.getAllListingsByStatus(status, pageNumber, pageSize);

@@ -1,11 +1,15 @@
 package co.istad.projectpracticum.phsardigital.features.listings;
 
+import co.istad.projectpracticum.phsardigital.features.listings.listing_attributes.ListingAttribute;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
 import org.springframework.data.jpa.domain.Specification;
 
 import java.util.Collection;
+import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -78,5 +82,35 @@ final class ListingSpecifications {
 
     private static Expression<Double> effectivePrice(Root<Listing> root, CriteriaBuilder builder) {
         return builder.coalesce(root.get("discountPrice"), root.get("fullPrice"));
+    }
+
+    /**
+     * Listings carrying this attribute at one of these values — the facet panel's "8 GB
+     * or 12 GB of RAM".
+     *
+     * <p>An {@code EXISTS} subquery rather than a join: a listing has many attributes, and
+     * joining them would return the same listing once per matching row, which breaks the
+     * page count before it breaks anything else. Two facets mean two subqueries, which is
+     * also what makes them narrow together instead of fighting over one join.
+     *
+     * <p>Both sides are lowercased, so a facet works whatever case the link was built in.
+     * Stored values are normalised on the way in, so this compares like with like.
+     */
+    static Specification<Listing> hasAttribute(String key, Collection<String> values) {
+        List<String> wanted = values.stream()
+                .map(value -> value.toLowerCase(Locale.ROOT))
+                .toList();
+        String wantedKey = key.toLowerCase(Locale.ROOT);
+
+        return (root, query, builder) -> {
+            Subquery<UUID> subquery = query.subquery(UUID.class);
+            Root<ListingAttribute> attribute = subquery.from(ListingAttribute.class);
+            subquery.select(attribute.get("listing").get("uuid"));
+            subquery.where(builder.and(
+                    builder.equal(attribute.get("listing").get("uuid"), root.get("uuid")),
+                    builder.equal(builder.lower(attribute.get("key")), wantedKey),
+                    builder.lower(attribute.get("value")).in(wanted)));
+            return builder.exists(subquery);
+        };
     }
 }

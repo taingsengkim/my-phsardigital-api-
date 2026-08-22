@@ -2,6 +2,7 @@ package co.istad.projectpracticum.phsardigital.features.listings.dto;
 
 import co.istad.projectpracticum.phsardigital.features.categories.dto.CategorySummaryResponse;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_attributes.dto.ListingAttributeResponse;
+import co.istad.projectpracticum.phsardigital.features.listings.listing_attributes.dto.ListingSpecificationGroupResponse;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_images.dto.ListingImageResponse;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingStatus;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_images.dto.ThumbnailImageResponse;
@@ -16,6 +17,10 @@ import java.util.UUID;
  *                      a buyer pays is this when present, {@code fullPrice} otherwise
  * @param isFavorite    whether the caller has saved this listing. Always false for an
  *                      anonymous visitor, who has nowhere to have saved it
+ * @param listingAttributes every spec flat, in the order it was stored
+ * @param specifications    the same specs sectioned the way the category declares them —
+ *                          Display, then Performance, then Camera — which is the shape a
+ *                          product page's spec table is drawn from
  */
 public record ListingResponse(
         UUID uuid,
@@ -33,6 +38,7 @@ public record ListingResponse(
         Integer sold,
         List<ListingImageResponse> images,
         List<ListingAttributeResponse> listingAttributes ,
+        List<ListingSpecificationGroupResponse> specifications,
         LocalDateTime createdAt,
         LocalDateTime lastModifiedAt,
         Double averageRating,
@@ -52,7 +58,7 @@ public record ListingResponse(
         return new ListingResponse(
                 uuid, sellerProfile, category, title, slug, description,
                 fullPrice, discountPrice, stockQty,
-                status, isFeatured, thumbnailUri, sold, images, listingAttributes,
+                status, isFeatured, thumbnailUri, sold, images, listingAttributes, specifications,
                 createdAt, lastModifiedAt, averageRating, reviewCount, isFavorite);
     }
 }

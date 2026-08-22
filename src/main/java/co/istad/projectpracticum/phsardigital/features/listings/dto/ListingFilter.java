@@ -1,5 +1,6 @@
 package co.istad.projectpracticum.phsardigital.features.listings.dto;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -13,6 +14,8 @@ import java.util.UUID;
  * @param sellerId      one shop's window
  * @param minPrice      inclusive lower bound
  * @param maxPrice      inclusive upper bound
+ * @param attributes    facets from the category's schema — 8 GB of RAM, an AMOLED panel.
+ *                      Each narrows the search further; see {@link AttributeFilter}
  */
 public record ListingFilter(
         UUID categoryUuid,
@@ -20,8 +23,15 @@ public record ListingFilter(
         String search,
         String sellerId,
         Double minPrice,
-        Double maxPrice
+        Double maxPrice,
+        List<AttributeFilter> attributes
 ) {
+
+    /** The filter as it was before facets existed, for callers that do not use them. */
+    public ListingFilter(UUID categoryUuid, String categorySlug, String search,
+                         String sellerId, Double minPrice, Double maxPrice) {
+        this(categoryUuid, categorySlug, search, sellerId, minPrice, maxPrice, List.of());
+    }
 
     public boolean isEmpty() {
         return categoryUuid == null
@@ -29,7 +39,8 @@ public record ListingFilter(
                 && isBlank(search)
                 && isBlank(sellerId)
                 && minPrice == null
-                && maxPrice == null;
+                && maxPrice == null
+                && (attributes == null || attributes.isEmpty());
     }
 
     private static boolean isBlank(String value) {

@@ -6,11 +6,12 @@ import co.istad.projectpracticum.phsardigital.features.categories.Category;
 import co.istad.projectpracticum.phsardigital.features.categories.CategoryRepository;
 import co.istad.projectpracticum.phsardigital.features.file.FileUpload;
 import co.istad.projectpracticum.phsardigital.features.file.FileUploadService;
+import co.istad.projectpracticum.phsardigital.features.listings.dto.AttributeFilter;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingCreateRequest;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingFilter;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingResponse;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.UpdateListingRequest;
-import co.istad.projectpracticum.phsardigital.features.listings.listing_attributes.ListingAttribute;
+import co.istad.projectpracticum.phsardigital.features.listings.listing_attributes.ListingAttributeWriter;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_images.ListingImage;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_images.dto.AddListingImageRequest;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_images.dto.ListingImageRequest;
@@ -45,6 +46,7 @@ public class ListingServiceImpl implements ListingService{
     private final FileUploadService fileUploadService;
     private final ListingVisibility listingVisibility;
     private final ListingResponseFactory listingResponseFactory;
+    private final ListingAttributeWriter listingAttributeWriter;
 
     /**
      * The moderation view: every seller's listings in one status.
@@ -118,6 +120,11 @@ public class ListingServiceImpl implements ListingService{
             }
             if (filter.maxPrice() != null) {
                 spec = spec.and(ListingSpecifications.pricedAtMost(filter.maxPrice()));
+            }
+            if (filter.attributes() != null) {
+                for (AttributeFilter attribute : filter.attributes()) {
+                    spec = spec.and(ListingSpecifications.hasAttribute(attribute.key(), attribute.values()));
+                }
             }
         }
 
@@ -194,6 +201,7 @@ public class ListingServiceImpl implements ListingService{
     }
 
     @Override
+    @Transactional
     public ListingResponse create(ListingCreateRequest request) {
         Category category = categoryRepository.findById(request.categoryUuid())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Category not found"));
@@ -231,20 +239,10 @@ public class ListingServiceImpl implements ListingService{
         listing.setStatus(ListingStatus.ACTIVE);
         listing.setSold(0);
 
-        if (request.listingAttributes() != null) {
-            List<ListingAttribute> attributes = request.listingAttributes().stream()
-                    .map(attrDto -> {
-                        ListingAttribute attribute = new ListingAttribute();
-                        attribute.setKey(attrDto.key());
-                        attribute.setValue(attrDto.value());
-                        attribute.setSortOrder(attrDto.sortOrder() != null ? attrDto.sortOrder() : 0);
-                        attribute.setListing(listing);   // 👈 **CRITICAL** - set the parent
-                        return attribute;
-                    })
-                    .collect(Collectors.toList());
-            listing.setListingAttributes(attributes);
-        }
-
+        // Always run, even with no attributes given: an empty set is exactly what fails
+        // the category's required check, and a phone with no storage listed should not
+        // reach the catalogue.
+        listingAttributeWriter.apply(listing, request.listingAttributes());
 
         attachImages(listing, request.images(), imageFiles);
 
@@ -262,9 +260,11 @@ public class ListingServiceImpl implements ListingService{
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not allowed to update this listing.");
         }
         requireNotSuspended(listing);
+        boolean categoryChanged = false;
         if (request.categoryUuid() != null) {
             Category category = categoryRepository.findById(request.categoryUuid())
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Category not found"));
+            categoryChanged = !category.getUuid().equals(listing.getCategory().getUuid());
             listing.setCategory(category);
         }
         if (request.title() != null) {
@@ -310,6 +310,16 @@ public class ListingServiceImpl implements ListingService{
         if (request.isFeatured() != null) {
             listing.setIsFeatured(request.isFeatured());
         }
+
+        // Re-checked whenever the category moves, because the schema moved with it: what
+        // a shirt had to specify and what a phone has to specify are different lists, and
+        // the seller supplies the new answers in this same call.
+        if (request.listingAttributes() != null) {
+            listingAttributeWriter.apply(listing, request.listingAttributes());
+        } else if (categoryChanged) {
+            listingAttributeWriter.apply(listing, listingAttributeWriter.currentOf(listing));
+        }
+
         Listing updated = listingRepository.save(listing);
         return listingResponseFactory.one(updated);
     }

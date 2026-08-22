@@ -1,14 +1,12 @@
 package co.istad.projectpracticum.phsardigital.features.listings.listing_attributes;
 
 import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
+import co.istad.projectpracticum.phsardigital.features.categories.category_attributes.CategoryAttributeResolver;
 import co.istad.projectpracticum.phsardigital.features.listings.Listing;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingRepository;
-import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingCreateRequest;
-import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingResponse;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_attributes.dto.ListingAttributeCreateRequest;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_attributes.dto.ListingAttributeResponse;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_attributes.dto.UpdateAttributeRequest;
-import lombok.NoArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -19,176 +17,125 @@ import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+/**
+ * Every operation here ends up handing {@link ListingAttributeWriter} the complete set the
+ * listing should end up with, rather than writing its own rows. A spec cannot be checked
+ * on its own: whether "8 GB" is a legal answer depends on the category, and whether the
+ * listing is still valid after a delete depends on what is left.
+ */
 @Service
 @RequiredArgsConstructor
 public class ListingAttributeServiceImpl implements ListingAttributeService {
 
-    private final ListingAttributeRepository listingAttributeRepository;
     private final ListingRepository listingRepository;
     private final ListingAttributeMapper listingAttributeMapper;
-
-
+    private final ListingAttributeWriter listingAttributeWriter;
 
     @Override
     @Transactional
-    public List<ListingAttributeResponse> addAttributes(UUID listingUuid, List<ListingAttributeCreateRequest> requests) {
+    public List<ListingAttributeResponse> addAttributes(UUID listingUuid,
+                                                        List<ListingAttributeCreateRequest> requests) {
+        Listing listing = editableListing(listingUuid, "You have no permission to add attribute");
 
-        // 1. Check if listing exist
-        Listing listing = listingRepository.findByUuidWithDetails(listingUuid)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found"));
+        List<ListingAttributeCreateRequest> desired = listingAttributeWriter.currentOf(listing);
+        Set<String> existingKeys = desired.stream()
+                .map(request -> CategoryAttributeResolver.normaliseKey(request.key()))
+                .collect(Collectors.toCollection(HashSet::new));
 
-        // 2. Check Authorization
-        String currentSellerId = AuthUtils.extractUserId();
-        if (!listing.getSellerProfile().getSellerId().equals(currentSellerId)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You have no permission to add attribute");
-        }
-
-        // 3. Collect all existed key value.
-        Set<String> existingKeys = listing.getListingAttributes().stream()
-                .map(ListingAttribute::getKey)
-                .collect(Collectors.toSet());
-
-
-        // 4. Prepare a list to hold the new attribute
-        List<ListingAttribute> attributes = new ArrayList<>();
-
-
-        // 5. Determine the current maximum sort order among existing attributes.
-        int currentMaxSort = listing.getListingAttributes().stream()
-                .map(ListingAttribute::getSortOrder)
+        int nextSortOrder = desired.stream()
+                .map(ListingAttributeCreateRequest::sortOrder)
+                .filter(Objects::nonNull)
                 .max(Integer::compareTo)
-                .orElse(0);
+                .orElse(-1) + 1;
 
-
-        // 6. Iterate over each request in the batch.
-        for (ListingAttributeCreateRequest req : requests) {
-
-            // validate NO duplicate key
-            if (existingKeys.contains(req.key())) {
+        for (ListingAttributeCreateRequest request : requests) {
+            // Rejected here rather than left to the writer, which would report it as a
+            // duplicate within one set — true, but not the useful half of the story when
+            // the clash is with something already on the listing.
+            if (!existingKeys.add(CategoryAttributeResolver.normaliseKey(request.key()))) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "Duplicate key: " + req.key());
+                        "This listing already has an attribute for '" + request.key() + "'.");
             }
-            existingKeys.add(req.key());
-
-            ListingAttribute attr = listingAttributeMapper.fromCreateRequest(req);
-            attr.setListing(listing);
-            attr.setSortOrder(req.sortOrder() != null ? req.sortOrder() : ++currentMaxSort);
-            attributes.add(attr);
-
+            desired.add(new ListingAttributeCreateRequest(
+                    request.key(),
+                    request.value(),
+                    request.sortOrder() != null ? request.sortOrder() : nextSortOrder++));
         }
 
-        List<ListingAttribute> saved = listingAttributeRepository.saveAll(attributes);
-        return saved.stream()
-                .map(listingAttributeMapper::toResponse)
-                .collect(Collectors.toList());
+        return respond(listingAttributeWriter.apply(listing, desired));
     }
 
-
     @Override
     @Transactional
-    public List<ListingAttributeResponse> updateAttributes(UUID listingUuid, List<UpdateAttributeRequest> updates) {
+    public List<ListingAttributeResponse> updateAttributes(UUID listingUuid,
+                                                           List<UpdateAttributeRequest> updates) {
+        Listing listing = editableListing(listingUuid, "Not allowed");
 
-        //  Check if listing exist
-        Listing listing = listingRepository.findByUuidWithDetails(listingUuid)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found"));
-
-        //  Checking user Authorization
-        String currentSellerId = AuthUtils.extractUserId();
-        if (!listing.getSellerProfile().getSellerId().equals(currentSellerId)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not allowed");
-        }
-
-
-        Map<UUID, ListingAttribute> attributeMap = listing.getListingAttributes().stream()
+        Map<UUID, ListingAttribute> byUuid = listing.getListingAttributes().stream()
                 .collect(Collectors.toMap(ListingAttribute::getUuid, Function.identity()));
 
+        // The set is rebuilt from the listing's current order, so an update touching one
+        // attribute leaves the rest exactly where they were.
+        Map<UUID, ListingAttributeCreateRequest> desired = new LinkedHashMap<>();
+        for (ListingAttribute attribute : listing.getListingAttributes()) {
+            desired.put(attribute.getUuid(), new ListingAttributeCreateRequest(
+                    attribute.getKey(), attribute.getValue(), attribute.getSortOrder()));
+        }
 
-        //  First, validate that all provided UUIDs exist in the listing
-        for (UpdateAttributeRequest req : updates) {
-            if (!attributeMap.containsKey(req.attributeUuid())) {
+        for (UpdateAttributeRequest update : updates) {
+            ListingAttribute attribute = byUuid.get(update.attributeUuid());
+            if (attribute == null) {
                 throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Attribute not found: " + req.attributeUuid());
+                        "Attribute not found: " + update.attributeUuid());
             }
+            ListingAttributeCreateRequest current = desired.get(update.attributeUuid());
+            desired.put(update.attributeUuid(), new ListingAttributeCreateRequest(
+                    update.newKey() != null ? update.newKey() : current.key(),
+                    update.newValue() != null ? update.newValue() : current.value(),
+                    current.sortOrder()));
         }
 
-        //  Collect existing keys
-        Set<String> existingKeys = listing.getListingAttributes().stream()
-                .map(ListingAttribute::getKey)
-                .collect(Collectors.toSet());
-
-        // Prepare a list to hold the attributes to be saved
-        List<ListingAttribute> toUpdate = new ArrayList<>();
-
-        // Iterate each update request
-        for (UpdateAttributeRequest req : updates) {
-            ListingAttribute attr = attributeMap.get(req.attributeUuid());
-
-            //  Update key if provided
-            if (req.newKey() != null && !req.newKey().equals(attr.getKey())) {
-                // Check if the new key already exists on another attribute of this listing
-                boolean keyExists = listing.getListingAttributes().stream()
-                        .anyMatch(a -> a.getKey().equals(req.newKey()) && !a.getUuid().equals(attr.getUuid()));
-                if (keyExists) {
-                    throw new ResponseStatusException(HttpStatus.CONFLICT,
-                            "Key '" + req.newKey() + "' already exists on this listing.");
-                }
-                attr.setKey(req.newKey());
-            }
-
-            // Update value if provided
-            if (req.newValue() != null) {
-                attr.setValue(req.newValue());
-            }
-
-            //  Add to update list
-            toUpdate.add(attr);
-        }
-
-        //  Save all updated attributes in one batch
-        List<ListingAttribute> saved = listingAttributeRepository.saveAll(toUpdate);
-
-
-        return saved.stream()
-                .map(listingAttributeMapper::toResponse)
-                .collect(Collectors.toList());
+        return respond(listingAttributeWriter.apply(listing, new ArrayList<>(desired.values())));
     }
-
 
     @Override
     @Transactional
     public void removeAttributes(UUID listingUuid, List<UUID> attributeUuids) {
+        Listing listing = editableListing(listingUuid, "Not allowed");
 
-        //  check if the listing exist
-        Listing listing = listingRepository.findByUuidWithDetails(listingUuid)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found"));
-
-        // check the authorization
-        String currentSellerId = AuthUtils.extractUserId();
-        if (!listing.getSellerProfile().getSellerId().equals(currentSellerId)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not allowed");
-        }
-
-
-        Map<UUID, ListingAttribute> attributeMap = listing.getListingAttributes().stream()
-                .collect(Collectors.toMap(ListingAttribute::getUuid, Function.identity()));
-
-        // Validate that all provided UUIDs exist in the listing
+        Set<UUID> present = listing.getListingAttributes().stream()
+                .map(ListingAttribute::getUuid)
+                .collect(Collectors.toSet());
         for (UUID uuid : attributeUuids) {
-            if (!attributeMap.containsKey(uuid)) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Attribute not found: " + uuid);
+            if (!present.contains(uuid)) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Attribute not found: " + uuid);
             }
         }
 
-        // 5. Collect the attributes to delete
-        List<ListingAttribute> toDelete = attributeUuids.stream()
-                .map(attributeMap::get)
-                .collect(Collectors.toList());
+        Set<UUID> removing = new HashSet<>(attributeUuids);
+        List<ListingAttributeCreateRequest> remaining = listing.getListingAttributes().stream()
+                .filter(attribute -> !removing.contains(attribute.getUuid()))
+                .map(attribute -> new ListingAttributeCreateRequest(
+                        attribute.getKey(), attribute.getValue(), attribute.getSortOrder()))
+                .collect(Collectors.toCollection(ArrayList::new));
 
-        // 6. Remove from the listing's collection
-        listing.getListingAttributes().removeAll(toDelete);
+        // Goes through the writer rather than deleting directly, so removing the spec the
+        // category insists on is refused instead of quietly leaving the listing invalid.
+        listingAttributeWriter.apply(listing, remaining);
+    }
 
+    /** The listing, if it exists and the caller is the seller who owns it. */
+    private Listing editableListing(UUID listingUuid, String forbiddenMessage) {
+        Listing listing = listingRepository.findByUuidWithDetails(listingUuid)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found"));
 
-        listingAttributeRepository.deleteAll(toDelete);
+        if (!listing.getSellerProfile().getSellerId().equals(AuthUtils.extractUserId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, forbiddenMessage);
+        }
+        return listing;
+    }
+
+    private List<ListingAttributeResponse> respond(List<ListingAttribute> attributes) {
+        return attributes.stream().map(listingAttributeMapper::toResponse).toList();
     }
 }

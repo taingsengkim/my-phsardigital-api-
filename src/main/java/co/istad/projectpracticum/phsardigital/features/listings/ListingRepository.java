@@ -69,6 +69,9 @@ public interface ListingRepository extends JpaRepository<Listing, UUID>, JpaSpec
 
     long countByStatus(ListingStatus status);
 
+    /** Listings whose own status and owning shop both allow public sale. */
+    long countByStatusAndSellerProfile_IsActiveTrue(ListingStatus status);
+
     Page<Listing> findBySellerProfile_SellerId(String sellerId, Pageable pageable);
 
     Page<Listing> findBySellerProfile_SellerIdAndStatus(String sellerId, ListingStatus status, Pageable pageable);

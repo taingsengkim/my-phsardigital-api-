@@ -1,5 +1,6 @@
 package co.istad.projectpracticum.phsardigital.features.review;
 
+import co.istad.projectpracticum.phsardigital.features.listings.listing_attributes.ListingAttributeMapper;
 import co.istad.projectpracticum.phsardigital.features.review.dto.ReviewAuthorResponse;
 import co.istad.projectpracticum.phsardigital.features.review.dto.ReviewResponse;
 import co.istad.projectpracticum.phsardigital.features.seller.SellerProfileMapper;
@@ -14,8 +15,12 @@ import org.springframework.beans.factory.annotation.Autowired;
  * letting MapStruct derive its own. The derived version could not fill {@code id}
  * (it comes from {@code sellerId}) or the logo URL (it needs the file service), so
  * every review answered a shop with a null id and no logo.
+ *
+ * <p>{@link ListingAttributeMapper} is delegated to for the same reason: a spec's label,
+ * unit and group are read off the category's definition of it, which a derived mapping
+ * cannot reach — so the reviewed product's specs came back as bare key/value pairs.
  */
-@Mapper(componentModel = "spring", uses = SellerProfileMapper.class)
+@Mapper(componentModel = "spring", uses = {SellerProfileMapper.class, ListingAttributeMapper.class})
 public abstract class ReviewMapper {
 
     @Autowired

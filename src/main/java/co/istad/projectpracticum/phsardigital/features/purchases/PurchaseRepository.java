@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
@@ -38,10 +39,22 @@ public interface PurchaseRepository extends JpaRepository<Purchase, UUID> {
      * Merchandise value over orders in one status — what buyers paid sellers, not
      * platform earnings.
      *
-     * @return the sum, or zero when no order qualifies ({@code SUM} over no rows is null)
+     * <p>The legacy column is floating point. Casting each order to cents before the
+     * sum prevents binary aggregation drift in this report. This is a compatibility
+     * bridge until every money column and calculation is migrated to {@code NUMERIC}
+     * and {@link BigDecimal} with a versioned database migration.
+     *
+     * @return the cent-rounded sum, or zero when no order qualifies
      */
-    @Query("SELECT COALESCE(SUM(p.totalPrice), 0) FROM Purchase p WHERE p.status = :status")
-    Double sumTotalPriceByStatus(@Param("status") PurchaseStatus status);
+    @Query(value = """
+            SELECT COALESCE(
+                SUM(CAST(total_price AS numeric(19, 2))),
+                CAST(0 AS numeric(19, 2))
+            )
+            FROM purchases
+            WHERE status = :status
+            """, nativeQuery = true)
+    BigDecimal sumRoundedTotalPriceByStatus(@Param("status") String status);
 
     /**
      * Shops ranked by what their completed orders were worth.

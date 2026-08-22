@@ -77,6 +77,12 @@ keycloak:
 app:
   cors:
     allowed-origin-patterns: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+  categories:
+    # On startup, gives categories whose slug is one the seeder knows — phones, t-shirts,
+    # shoes, laptops, watches, headphones — the attribute schema that kind of product has
+    # in a real shop. It creates no categories and never touches one that already has
+    # attributes of its own, so it is a no-op after the first run and after any admin edit.
+    seed-attributes: ${CATEGORY_SEED_ATTRIBUTES:true}
   auth:
     # Everything under /api/v1/auth is anonymous, and every POST there is expensive:
     # registration makes three Keycloak admin calls, and the other two exist to send
