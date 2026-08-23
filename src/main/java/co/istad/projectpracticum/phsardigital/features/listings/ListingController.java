@@ -10,9 +10,12 @@ import co.istad.projectpracticum.phsardigital.features.listings.listing_images.d
 import co.istad.projectpracticum.phsardigital.features.listings.listing_images.dto.ReorderImagesRequest;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_images.dto.UpdateThumbnailRequest;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -22,6 +25,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/listings")
 @RequiredArgsConstructor
+@Validated
 public class ListingController {
     private final  ListingService listingService;
     private final RelatedListingService relatedListingService;
@@ -53,8 +57,13 @@ public class ListingController {
                                         @RequestParam(required = false) Double maxPrice,
                                         @RequestParam(required = false) List<String> attr,
                                         @RequestParam(required = false) String sort,
-                                        @RequestParam(defaultValue = "0") Integer pageNumber,
-                                        @RequestParam(defaultValue = "20") Integer pageSize) {
+                                        @RequestParam(defaultValue = "0")
+                                        @Min(value = 0, message = "Page number must be zero or greater")
+                                        Integer pageNumber,
+                                        @RequestParam(defaultValue = "20")
+                                        @Min(value = 1, message = "Page size must be at least 1")
+                                        @Max(value = 100, message = "Page size must not exceed 100")
+                                        Integer pageSize) {
         if (status == null || status.isBlank()) {
             ListingFilter filter = new ListingFilter(
                     categoryUuid, categorySlug, search, sellerId, minPrice, maxPrice,
@@ -80,8 +89,13 @@ public class ListingController {
      */
     @GetMapping("/me")
     public Page<ListingResponse> getMine(@RequestParam(required = false) String status,
-                                         @RequestParam(defaultValue = "0") Integer pageNumber,
-                                         @RequestParam(defaultValue = "20") Integer pageSize) {
+                                         @RequestParam(defaultValue = "0")
+                                         @Min(value = 0, message = "Page number must be zero or greater")
+                                         Integer pageNumber,
+                                         @RequestParam(defaultValue = "20")
+                                         @Min(value = 1, message = "Page size must be at least 1")
+                                         @Max(value = 100, message = "Page size must not exceed 100")
+                                         Integer pageSize) {
         return listingService.getMyListings(status, pageNumber, pageSize);
     }
 

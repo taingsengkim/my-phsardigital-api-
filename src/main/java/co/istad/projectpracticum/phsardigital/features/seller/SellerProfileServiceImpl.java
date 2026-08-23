@@ -3,6 +3,9 @@ package co.istad.projectpracticum.phsardigital.features.seller;
 import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
 import co.istad.projectpracticum.phsardigital.features.file.FileUpload;
 import co.istad.projectpracticum.phsardigital.features.file.FileUploadService;
+import co.istad.projectpracticum.phsardigital.features.categories.Category;
+import co.istad.projectpracticum.phsardigital.features.categories.CategoryAvailability;
+import co.istad.projectpracticum.phsardigital.features.categories.CategoryRepository;
 import co.istad.projectpracticum.phsardigital.features.listings.Listing;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingRepository;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingResponseFactory;
@@ -14,12 +17,17 @@ import co.istad.projectpracticum.phsardigital.features.seller.dto.SellerProfileU
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.function.Consumer;
+import java.util.LinkedHashSet;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -32,6 +40,8 @@ public class SellerProfileServiceImpl implements SellerProfileService{
     private final FileUploadService fileUploadService;
     private final ReviewRepository reviewRepository;
     private final ShopLocationResolver shopLocationResolver;
+    private final CategoryRepository categoryRepository;
+    private final CategoryAvailability categoryAvailability;
 
     @Override
     public SellerProfileResponse getPublicProfile(String sellerId) {
@@ -54,8 +64,19 @@ public class SellerProfileServiceImpl implements SellerProfileService{
             return Page.empty(pageable);
         }
 
-        Page<Listing> listings = listingRepository.findBySellerProfileAndStatus(
-                seller, ListingStatus.ACTIVE, pageable);
+        Set<UUID> publicCategoryUuids = categoryRepository
+                .findAllByIsDeletedFalseAndIsActiveTrue(Sort.unsorted())
+                .stream()
+                .filter(categoryAvailability::isEffectivelyActive)
+                .map(Category::getUuid)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (publicCategoryUuids.isEmpty()) {
+            return Page.empty(pageable);
+        }
+
+        Page<Listing> listings = listingRepository
+                .findPublicBySeller(
+                        seller, ListingStatus.ACTIVE, 0, publicCategoryUuids, pageable);
         return listingResponseFactory.page(listings);
     }
 

@@ -1,8 +1,10 @@
 package co.istad.projectpracticum.phsardigital.features.categories.category_attributes;
 
 import co.istad.projectpracticum.phsardigital.features.categories.Category;
+import co.istad.projectpracticum.phsardigital.features.categories.CategoryAvailability;
 import co.istad.projectpracticum.phsardigital.features.categories.CategoryRepository;
 import co.istad.projectpracticum.phsardigital.features.categories.category_attributes.dto.*;
+import co.istad.projectpracticum.phsardigital.features.listings.ListingSchemaImpactValidator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -29,20 +31,34 @@ public class CategoryAttributeServiceImpl implements CategoryAttributeService {
     private final CategoryAttributeRepository categoryAttributeRepository;
     private final CategoryAttributeResolver categoryAttributeResolver;
     private final CategoryAttributeMapper categoryAttributeMapper;
+    private final CategoryAvailability categoryAvailability;
+    private final ListingSchemaImpactValidator listingSchemaImpactValidator;
 
     @Override
     @Transactional(readOnly = true)
     public CategoryAttributeSchemaResponse getSchema(UUID categoryUuid, boolean includeInherited) {
-        return schemaFor(activeCategoryOr404(categoryUuid, "Category not found with this id."),
+        return schemaFor(publicCategoryOr404(categoryUuid, "Category not found with this id."),
                 includeInherited);
     }
 
     @Override
     @Transactional(readOnly = true)
+    public CategoryAttributeSchemaResponse getSchemaForAdmin(
+            UUID categoryUuid, boolean includeInherited) {
+        Category category = categoryRepository.findByUuidAndIsDeletedFalse(categoryUuid)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Category not found with this id."));
+        return schemaFor(category, includeInherited);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public CategoryAttributeSchemaResponse getSchemaBySlug(String categorySlug, boolean includeInherited) {
-        Category category = categoryRepository.findBySlugAndIsDeletedFalse(categorySlug)
+        Category category = categoryRepository.findBySlugAndIsDeletedFalse(
+                        categorySlug.trim().toLowerCase(Locale.ROOT))
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Category not found with this slug."));
+        requirePubliclyAvailable(category, "Category not found with this slug.");
         return schemaFor(category, includeInherited);
     }
 
@@ -53,7 +69,13 @@ public class CategoryAttributeServiceImpl implements CategoryAttributeService {
         if (requests == null || requests.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No attributes given.");
         }
-        Category category = activeCategoryOr404(categoryUuid, "Category not found with this id.");
+        Category category = mutableCategoryOr404(categoryUuid, "Category not found with this id.");
+        if (requests.size() > 100
+                || categoryAttributeRepository.countByCategory_UuidAndIsDeletedFalse(categoryUuid)
+                + requests.size() > 100) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "A category may define at most 100 active attributes.");
+        }
 
         // Checked against the batch as well as the table: two attributes sharing a code
         // inside one request would otherwise both pass and collide on insert.
@@ -66,12 +88,18 @@ public class CategoryAttributeServiceImpl implements CategoryAttributeService {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "Duplicate attribute code in this request: " + code);
             }
-            if (categoryAttributeRepository.existsByCategory_UuidAndCodeAndIsDeletedFalse(categoryUuid, code)) {
+            CategoryAttribute existing = categoryAttributeRepository
+                    .findByCategory_UuidAndCodeIgnoreCase(categoryUuid, code)
+                    .orElse(null);
+            if (existing != null && !Boolean.TRUE.equals(existing.getIsDeleted())) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
                         "This category already defines an attribute with code '" + code + "'.");
             }
 
-            CategoryAttribute attribute = new CategoryAttribute();
+            // A soft-deleted definition still occupies the database's stable
+            // (category_uuid, code) identity. Restore that row rather than trying to
+            // insert a duplicate; listing rows that referenced it keep the same FK too.
+            CategoryAttribute attribute = existing == null ? new CategoryAttribute() : existing;
             attribute.setCategory(category);
             attribute.setCode(code);
             attribute.setLabel(request.label().trim());
@@ -91,7 +119,9 @@ public class CategoryAttributeServiceImpl implements CategoryAttributeService {
             attributes.add(attribute);
         }
 
-        return categoryAttributeRepository.saveAll(attributes).stream()
+        List<CategoryAttribute> saved = categoryAttributeRepository.saveAllAndFlush(attributes);
+        listingSchemaImpactValidator.revalidatePublishedListings(category);
+        return saved.stream()
                 .map(categoryAttributeMapper::toResponse)
                 .toList();
     }
@@ -100,23 +130,37 @@ public class CategoryAttributeServiceImpl implements CategoryAttributeService {
     @Transactional
     public CategoryAttributeResponse update(UUID categoryUuid, UUID attributeUuid,
                                             UpdateCategoryAttributeRequest request) {
-        activeCategoryOr404(categoryUuid, "Category not found with this id.");
+        Category category = mutableCategoryOr404(categoryUuid, "Category not found with this id.");
+        boolean validationRulesChanged = request.dataType() != null
+                || request.required() != null
+                || request.minValue() != null
+                || Boolean.TRUE.equals(request.clearMinValue())
+                || request.maxValue() != null
+                || Boolean.TRUE.equals(request.clearMaxValue())
+                || request.options() != null;
         CategoryAttribute attribute = categoryAttributeRepository.findByUuidAndIsDeletedFalse(attributeUuid)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Attribute not found."));
         requireOwnedBy(attribute, categoryUuid);
+        requireUnambiguousClear("unit", request.unit(), request.clearUnit());
+        requireUnambiguousClear("minimum", request.minValue(), request.clearMinValue());
+        requireUnambiguousClear("maximum", request.maxValue(), request.clearMaxValue());
 
         if (request.code() != null) {
             String code = request.code().trim().toLowerCase(Locale.ROOT);
-            if (categoryAttributeRepository
-                    .existsByCategory_UuidAndCodeAndIsDeletedFalseAndUuidNot(categoryUuid, code, attributeUuid)) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "This category already defines an attribute with code '" + code + "'.");
+            if (!attribute.getCode().equals(code)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Attribute code is a stable identifier and cannot be changed. "
+                                + "Create a new attribute instead.");
             }
-            attribute.setCode(code);
         }
         if (request.label() != null) {
-            attribute.setLabel(request.label().trim());
+            String label = request.label().trim();
+            if (label.isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Attribute label must not be blank.");
+            }
+            attribute.setLabel(label);
         }
         if (request.group() != null) {
             // Blank is how a group is cleared, since an empty heading is not a heading.
@@ -125,7 +169,9 @@ public class CategoryAttributeServiceImpl implements CategoryAttributeService {
         if (request.dataType() != null) {
             attribute.setDataType(request.dataType());
         }
-        if (request.unit() != null) {
+        if (Boolean.TRUE.equals(request.clearUnit())) {
+            attribute.setUnit(null);
+        } else if (request.unit() != null) {
             attribute.setUnit(trimToNull(request.unit()));
         }
         if (request.required() != null) {
@@ -134,10 +180,14 @@ public class CategoryAttributeServiceImpl implements CategoryAttributeService {
         if (request.filterable() != null) {
             attribute.setFilterable(request.filterable());
         }
-        if (request.minValue() != null) {
+        if (Boolean.TRUE.equals(request.clearMinValue())) {
+            attribute.setMinValue(null);
+        } else if (request.minValue() != null) {
             attribute.setMinValue(request.minValue());
         }
-        if (request.maxValue() != null) {
+        if (Boolean.TRUE.equals(request.clearMaxValue())) {
+            attribute.setMaxValue(null);
+        } else if (request.maxValue() != null) {
             attribute.setMaxValue(request.maxValue());
         }
         if (request.sortOrder() != null) {
@@ -155,20 +205,25 @@ public class CategoryAttributeServiceImpl implements CategoryAttributeService {
         // is not.
         requireCoherent(attribute);
 
-        return categoryAttributeMapper.toResponse(categoryAttributeRepository.save(attribute));
+        CategoryAttribute saved = categoryAttributeRepository.saveAndFlush(attribute);
+        if (validationRulesChanged) {
+            listingSchemaImpactValidator.revalidatePublishedListings(category);
+        }
+        return categoryAttributeMapper.toResponse(saved);
     }
 
     @Override
     @Transactional
     public void delete(UUID categoryUuid, UUID attributeUuid) {
-        activeCategoryOr404(categoryUuid, "Category not found with this id.");
+        Category category = mutableCategoryOr404(categoryUuid, "Category not found with this id.");
         CategoryAttribute attribute = categoryAttributeRepository.findByUuidAndIsDeletedFalse(attributeUuid)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Attribute not found."));
         requireOwnedBy(attribute, categoryUuid);
 
         attribute.setIsDeleted(true);
-        categoryAttributeRepository.save(attribute);
+        categoryAttributeRepository.saveAndFlush(attribute);
+        listingSchemaImpactValidator.revalidatePublishedListings(category);
     }
 
     private CategoryAttributeSchemaResponse schemaFor(Category category, boolean includeInherited) {
@@ -215,6 +270,10 @@ public class CategoryAttributeServiceImpl implements CategoryAttributeService {
      * removal only sees what happens to the collection Hibernate is holding.
      */
     private void replaceOptions(CategoryAttribute attribute, List<CategoryAttributeOptionRequest> requests) {
+        if (requests != null && requests.size() > 200) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "An attribute may define at most 200 options: " + attribute.getCode());
+        }
         List<CategoryAttributeOption> options = attribute.getOptions();
         Map<String, CategoryAttributeOption> existing = new LinkedHashMap<>();
         for (CategoryAttributeOption option : options) {
@@ -226,6 +285,15 @@ public class CategoryAttributeServiceImpl implements CategoryAttributeService {
         int position = 0;
         for (CategoryAttributeOptionRequest request : requests == null ? List.<CategoryAttributeOptionRequest>of() : requests) {
             String value = request.value().trim();
+            if (value.isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Option value must not be blank on attribute '" + attribute.getCode() + "'.");
+            }
+            if (value.contains(",")) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Option value must not contain a comma on attribute '"
+                                + attribute.getCode() + "': " + value);
+            }
             String key = value.toLowerCase(Locale.ROOT);
             if (!seen.add(key)) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -269,6 +337,16 @@ public class CategoryAttributeServiceImpl implements CategoryAttributeService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Only NUMBER attributes take a minimum or maximum: " + attribute.getCode());
         }
+        if (attribute.getDataType() != AttributeDataType.NUMBER && attribute.getUnit() != null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Only NUMBER attributes take a unit: " + attribute.getCode()
+                            + ". Send clearUnit=true when changing its type.");
+        }
+        if ((attribute.getMinValue() != null && !Double.isFinite(attribute.getMinValue()))
+                || (attribute.getMaxValue() != null && !Double.isFinite(attribute.getMaxValue()))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Numeric bounds must be finite on attribute: " + attribute.getCode());
+        }
         if (attribute.getMinValue() != null && attribute.getMaxValue() != null
                 && attribute.getMinValue() > attribute.getMaxValue()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -289,9 +367,22 @@ public class CategoryAttributeServiceImpl implements CategoryAttributeService {
         }
     }
 
-    private Category activeCategoryOr404(UUID uuid, String message) {
-        return categoryRepository.findByUuidAndIsDeletedFalse(uuid)
+    private Category mutableCategoryOr404(UUID uuid, String message) {
+        return categoryRepository.findMutableByUuidForUpdate(uuid)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, message));
+    }
+
+    private Category publicCategoryOr404(UUID uuid, String message) {
+        Category category = categoryRepository.findByUuidAndIsDeletedFalse(uuid)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, message));
+        requirePubliclyAvailable(category, message);
+        return category;
+    }
+
+    private void requirePubliclyAvailable(Category category, String message) {
+        if (!categoryAvailability.isEffectivelyActive(category)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, message);
+        }
     }
 
     private static String trimToNull(String value) {
@@ -300,5 +391,12 @@ public class CategoryAttributeServiceImpl implements CategoryAttributeService {
         }
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private static void requireUnambiguousClear(String field, Object value, Boolean clear) {
+        if (value != null && Boolean.TRUE.equals(clear)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Send either " + field + " or its clear flag, not both.");
+        }
     }
 }

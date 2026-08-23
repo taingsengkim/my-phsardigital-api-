@@ -94,6 +94,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PATCH,"/api/v1/listings/**").hasAnyRole("SELLER","ADMIN")
                         .requestMatchers(HttpMethod.PUT,"/api/v1/listings/**").hasAnyRole("SELLER","ADMIN")
                         .requestMatchers(HttpMethod.DELETE,"/api/v1/listings/**").hasAnyRole("SELLER","ADMIN")
+                        // This compatibility route mutates a seller-owned listing and
+                        // its service deliberately enforces ownership. Admin moderation
+                        // has separate endpoints; it does not edit a seller's catalogue.
+                        .requestMatchers("/api/v1/listing_attributes/**").hasRole("SELLER")
                         .requestMatchers("/api/v1/carts/**").hasAnyRole("USER", "ADMIN")
                         .requestMatchers("/api/v1/admin/users/**").hasRole("ADMIN")
                         .requestMatchers("/api/v1/admin/seller-applications/**").hasRole("ADMIN")

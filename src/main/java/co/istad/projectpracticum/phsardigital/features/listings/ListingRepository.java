@@ -55,10 +55,26 @@ public interface ListingRepository extends JpaRepository<Listing, UUID>, JpaSpec
      */
     Page<Listing> findByStatusAndSellerProfile_IsActiveTrue(ListingStatus status, Pageable pageable);
 
+    Page<Listing> findByStatusAndSellerProfile_IsActiveTrueAndCategory_IsActiveTrueAndCategory_IsDeletedFalse(
+            ListingStatus status, Pageable pageable);
+
     boolean existsBySlug(String slug);
 
 
     Page<Listing> findBySellerProfileAndStatus(SellerProfile seller, ListingStatus status, Pageable pageable);
+
+    @EntityGraph(attributePaths = {"category", "sellerProfile", "thumbnailFile"})
+    @Query("SELECT l FROM Listing l "
+            + "WHERE l.sellerProfile = :seller "
+            + "AND l.status = :status "
+            + "AND l.stockQty > :minimumStock "
+            + "AND l.category.uuid IN :categoryUuids")
+    Page<Listing> findPublicBySeller(
+            @Param("seller") SellerProfile seller,
+            @Param("status") ListingStatus status,
+            @Param("minimumStock") Integer minimumStock,
+            @Param("categoryUuids") Collection<UUID> categoryUuids,
+            Pageable pageable);
 
     /**
      * How many listings count against a seller's subscription plan. Excludes one
@@ -69,8 +85,26 @@ public interface ListingRepository extends JpaRepository<Listing, UUID>, JpaSpec
 
     long countByStatus(ListingStatus status);
 
-    /** Listings whose own status and owning shop both allow public sale. */
-    long countByStatusAndSellerProfile_IsActiveTrue(ListingStatus status);
+    /**
+     * Status alone is not sellability: stock and shop must permit sale, while the
+     * caller supplies categories whose complete ancestry is publicly available.
+     */
+    @Query("SELECT COUNT(l) FROM Listing l "
+            + "WHERE l.status = :status "
+            + "AND l.stockQty > 0 "
+            + "AND l.sellerProfile.isActive = true "
+            + "AND l.category.uuid IN :categoryUuids")
+    long countBuyableByStatusInCategories(
+            @Param("status") ListingStatus status,
+            @Param("categoryUuids") Collection<UUID> categoryUuids);
+
+    boolean existsByCategory_Uuid(UUID categoryUuid);
+
+    boolean existsByCategory_UuidIn(Collection<UUID> categoryUuids);
+
+    /** Locks affected listings before a category-schema rewrite; attributes load in-transaction. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    List<Listing> findAllByCategory_UuidIn(Collection<UUID> categoryUuids);
 
     Page<Listing> findBySellerProfile_SellerId(String sellerId, Pageable pageable);
 
@@ -88,6 +122,11 @@ public interface ListingRepository extends JpaRepository<Listing, UUID>, JpaSpec
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT l FROM Listing l WHERE l.uuid = :uuid")
     Optional<Listing> findByUuidForUpdate(@Param("uuid") UUID uuid);
+
+    /** Serializes complete-set listing and attribute edits to prevent lost updates. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT l FROM Listing l WHERE l.uuid = :uuid")
+    Optional<Listing> findByUuidForEdit(@Param("uuid") UUID uuid);
 
     // Related products. All three join-fetch the category, shop and thumbnail the card
     // is drawn from — all ManyToOne, so safe to paginate. The gallery is deliberately
@@ -114,6 +153,8 @@ public interface ListingRepository extends JpaRepository<Listing, UUID>, JpaSpec
             + "AND l.uuid <> :excludeUuid "
             + "AND l.status = :status "
             + "AND s.isActive = true "
+            + "AND l.category.isActive = true "
+            + "AND l.category.isDeleted = false "
             + "ORDER BY ABS(COALESCE(l.discountPrice, l.fullPrice) - :price), l.sold DESC")
     List<Listing> findCategoryPeers(@Param("category") Category category,
                                     @Param("excludeUuid") UUID excludeUuid,
@@ -130,6 +171,8 @@ public interface ListingRepository extends JpaRepository<Listing, UUID>, JpaSpec
             + "AND l.uuid <> :excludeUuid "
             + "AND l.status = :status "
             + "AND s.isActive = true "
+            + "AND l.category.isActive = true "
+            + "AND l.category.isDeleted = false "
             + "ORDER BY l.sold DESC, l.createdAt DESC")
     List<Listing> findShopPeers(@Param("seller") SellerProfile seller,
                                 @Param("excludeUuid") UUID excludeUuid,
@@ -147,7 +190,9 @@ public interface ListingRepository extends JpaRepository<Listing, UUID>, JpaSpec
             + "LEFT JOIN FETCH l.thumbnailFile "
             + "WHERE l.uuid IN :uuids "
             + "AND l.status = :status "
-            + "AND s.isActive = true")
+            + "AND s.isActive = true "
+            + "AND l.category.isActive = true "
+            + "AND l.category.isDeleted = false")
     List<Listing> findBuyableByUuidIn(@Param("uuids") Collection<UUID> uuids,
                                       @Param("status") ListingStatus status);
 }

@@ -2,6 +2,7 @@ package co.istad.projectpracticum.phsardigital.features.categories.category_attr
 
 import co.istad.projectpracticum.phsardigital.features.categories.Category;
 import co.istad.projectpracticum.phsardigital.features.categories.CategoryRepository;
+import co.istad.projectpracticum.phsardigital.features.listings.ListingRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
@@ -11,8 +12,15 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.ArrayDeque;
+import java.util.Collections;
+import java.util.Deque;
+import java.util.IdentityHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 
 import static co.istad.projectpracticum.phsardigital.features.categories.category_attributes.AttributeDataType.*;
 
@@ -45,6 +53,7 @@ public class CategoryAttributeSeeder implements ApplicationRunner {
 
     private final CategoryRepository categoryRepository;
     private final CategoryAttributeRepository categoryAttributeRepository;
+    private final ListingRepository listingRepository;
 
     @Override
     @Transactional
@@ -58,6 +67,15 @@ public class CategoryAttributeSeeder implements ApplicationRunner {
         if (categoryAttributeRepository.existsByCategory_Uuid(category.getUuid())) {
             return;
         }
+        Set<UUID> affectedCategories = categoryUuidsIn(category);
+        if (listingRepository.existsByCategory_UuidIn(affectedCategories)) {
+            // Several blueprints contain required attributes. Applying one silently to
+            // an already-stocked category would make existing listings invalid on the
+            // next edit. Runtime seed data must never rewrite live business rules.
+            log.warn("Skipped attribute seed for category '{}' because its subtree already has listings.",
+                    category.getSlug());
+            return;
+        }
 
         List<CategoryAttribute> attributes = new ArrayList<>();
         for (int position = 0; position < blueprint.specs().size(); position++) {
@@ -65,6 +83,28 @@ public class CategoryAttributeSeeder implements ApplicationRunner {
         }
         categoryAttributeRepository.saveAll(attributes);
         log.info("Seeded {} attributes onto category '{}'.", attributes.size(), category.getSlug());
+    }
+
+    private static Set<UUID> categoryUuidsIn(Category root) {
+        Set<UUID> result = new LinkedHashSet<>();
+        Set<Category> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+        Deque<Category> pending = new ArrayDeque<>();
+        pending.add(root);
+        while (!pending.isEmpty()) {
+            Category current = pending.removeFirst();
+            if (!visited.add(current)) {
+                continue;
+            }
+            if (current.getUuid() != null) {
+                result.add(current.getUuid());
+            }
+            if (current.getChildCategories() != null) {
+                current.getChildCategories().stream()
+                        .filter(java.util.Objects::nonNull)
+                        .forEach(pending::addLast);
+            }
+        }
+        return result;
     }
 
     /**
@@ -101,7 +141,9 @@ public class CategoryAttributeSeeder implements ApplicationRunner {
     /** The first of the blueprint's slugs that this shop actually has a category for. */
     private Optional<Category> findCategory(Blueprint blueprint) {
         for (String slug : blueprint.slugs()) {
-            Optional<Category> category = categoryRepository.findBySlugAndIsDeletedFalse(slug);
+            // The lock makes the check-then-seed idempotent across multiple application
+            // instances starting together, not only across restarts of one process.
+            Optional<Category> category = categoryRepository.findMutableBySlugForUpdate(slug);
             if (category.isPresent()) {
                 return category;
             }

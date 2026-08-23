@@ -1,5 +1,8 @@
 package co.istad.projectpracticum.phsardigital.features.admin;
 
+import co.istad.projectpracticum.phsardigital.features.categories.Category;
+import co.istad.projectpracticum.phsardigital.features.categories.CategoryAvailability;
+import co.istad.projectpracticum.phsardigital.features.categories.CategoryRepository;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingRepository;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingStatus;
 import co.istad.projectpracticum.phsardigital.features.purchases.PurchaseRepository;
@@ -16,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Sort;
 
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -23,9 +27,12 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.tuple;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -40,6 +47,8 @@ class AdminDashboardServiceImplTest {
     private UserProfileRepository userRepository;
     @Mock
     private SellerProfileRepository sellerProfileRepository;
+    @Mock
+    private CategoryRepository categoryRepository;
     @Mock
     private ListingRepository listingRepository;
     @Mock
@@ -56,6 +65,8 @@ class AdminDashboardServiceImplTest {
         service = new AdminDashboardServiceImpl(
                 userRepository,
                 sellerProfileRepository,
+                categoryRepository,
+                new CategoryAvailability(),
                 listingRepository,
                 applicationRepository,
                 purchaseRepository,
@@ -69,7 +80,11 @@ class AdminDashboardServiceImplTest {
         when(sellerProfileRepository.count()).thenReturn(12L);
         when(sellerProfileRepository.countByIsActiveTrue()).thenReturn(9L);
         when(listingRepository.count()).thenReturn(125L);
-        when(listingRepository.countByStatusAndSellerProfile_IsActiveTrue(ListingStatus.ACTIVE))
+        Category publicCategory = category(true, false, null);
+        when(categoryRepository.findAllByIsDeletedFalseAndIsActiveTrue(Sort.unsorted()))
+                .thenReturn(List.of(publicCategory));
+        when(listingRepository.countBuyableByStatusInCategories(
+                ListingStatus.ACTIVE, Set.of(publicCategory.getUuid())))
                 .thenReturn(87L);
         when(applicationRepository.countByStatus(ApplicationStatus.PENDING)).thenReturn(4L);
         when(purchaseRepository.countByStatus(PurchaseStatus.COMPLETED)).thenReturn(31L);
@@ -105,9 +120,8 @@ class AdminDashboardServiceImplTest {
                         tuple("STANDARD", "Standard", 0L),
                         tuple("PREMIUM", "Premium", 1L));
 
-        verify(listingRepository)
-                .countByStatusAndSellerProfile_IsActiveTrue(ListingStatus.ACTIVE);
-        verify(listingRepository, never()).countByStatus(ListingStatus.ACTIVE);
+        verify(listingRepository).countBuyableByStatusInCategories(
+                ListingStatus.ACTIVE, Set.of(publicCategory.getUuid()));
         verify(purchaseRepository).countByStatus(PurchaseStatus.COMPLETED);
         verify(purchaseRepository).sumRoundedTotalPriceByStatus("COMPLETED");
         verify(subscriptionRepository).countActiveByPlan(
@@ -115,7 +129,34 @@ class AdminDashboardServiceImplTest {
     }
 
     @Test
+    void excludesCategoriesUnderInactiveOrDeletedAncestorsFromBuyableCount() {
+        Category publicCategory = category(true, false, null);
+        Category inactiveAncestor = category(false, false, null);
+        Category belowInactiveAncestor = category(true, false, inactiveAncestor);
+        Category deletedAncestor = category(true, true, null);
+        Category belowDeletedAncestor = category(true, false, deletedAncestor);
+
+        when(listingRepository.count()).thenReturn(3L);
+        when(categoryRepository.findAllByIsDeletedFalseAndIsActiveTrue(Sort.unsorted()))
+                .thenReturn(List.of(
+                        publicCategory,
+                        belowInactiveAncestor,
+                        belowDeletedAncestor));
+        when(listingRepository.countBuyableByStatusInCategories(
+                ListingStatus.ACTIVE, Set.of(publicCategory.getUuid())))
+                .thenReturn(1L);
+
+        var result = service.getSummary();
+
+        assertThat(result.listings().publiclyAvailable()).isEqualTo(1L);
+        verify(listingRepository).countBuyableByStatusInCategories(
+                ListingStatus.ACTIVE, Set.of(publicCategory.getUuid()));
+    }
+
+    @Test
     void returnsZeroGmvAndEveryPlanWhenThereIsNoActivity() {
+        when(categoryRepository.findAllByIsDeletedFalseAndIsActiveTrue(Sort.unsorted()))
+                .thenReturn(List.of());
         when(subscriptionRepository.countActiveByPlan(
                 SubscriptionStatus.ACTIVE, LocalDateTime.ofInstant(NOW, ZONE)))
                 .thenReturn(List.of());
@@ -133,5 +174,16 @@ class AdminDashboardServiceImplTest {
                         tuple("BASIC", 0L),
                         tuple("STANDARD", 0L),
                         tuple("PREMIUM", 0L));
+        verify(listingRepository, never())
+                .countBuyableByStatusInCategories(any(), any());
+    }
+
+    private static Category category(boolean active, boolean deleted, Category parent) {
+        Category category = new Category();
+        category.setUuid(UUID.randomUUID());
+        category.setIsActive(active);
+        category.setIsDeleted(deleted);
+        category.setParentCategory(parent);
+        return category;
     }
 }

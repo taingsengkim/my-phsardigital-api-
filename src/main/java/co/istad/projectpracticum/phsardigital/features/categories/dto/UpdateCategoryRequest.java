@@ -7,11 +7,13 @@ import java.util.UUID;
 /**
  * Partial update: only non-null fields are applied. {@code level} is absent
  * because it follows the parent — reparenting recalculates it for the whole
- * subtree. Use {@code DELETE /{uuid}/icon} to clear an icon, since a null
- * {@code iconFileId} here means "leave it alone".
+ * subtree. Set {@code moveToRoot=true} to clear the parent; sending it together
+ * with {@code parentUuid} is invalid. Use {@code DELETE /{uuid}/icon} to clear
+ * an icon, since a null {@code iconFileId} here means "leave it alone".
  */
 public record UpdateCategoryRequest(
         @Size(min = 2, max = 100, message = "Name must be between 2 and 100 characters")
+        @Pattern(regexp = ".*\\S.*", message = "Name must not be blank")
         String name,
 
         @Size(max = 150, message = "Slug must not exceed 150 characters")
@@ -31,6 +33,8 @@ public record UpdateCategoryRequest(
 
         Boolean isActive,
 
-        UUID parentUuid
+        UUID parentUuid,
+
+        Boolean moveToRoot
 ){
 }

@@ -24,6 +24,13 @@ public interface CategoryAttributeService {
      */
     CategoryAttributeSchemaResponse getSchema(UUID categoryUuid, boolean includeInherited);
 
+    /**
+     * Administrator view of a non-deleted category's schema. Unlike the storefront
+     * method, this deliberately permits an inactive category so it can be prepared
+     * before publication.
+     */
+    CategoryAttributeSchemaResponse getSchemaForAdmin(UUID categoryUuid, boolean includeInherited);
+
     /** The same, by the slug the storefront's URLs are built from. */
     CategoryAttributeSchemaResponse getSchemaBySlug(String categorySlug, boolean includeInherited);
 

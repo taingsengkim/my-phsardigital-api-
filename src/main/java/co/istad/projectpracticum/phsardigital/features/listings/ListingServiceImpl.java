@@ -3,6 +3,7 @@ package co.istad.projectpracticum.phsardigital.features.listings;
 import co.istad.projectpracticum.phsardigital.config.config.Utils;
 import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
 import co.istad.projectpracticum.phsardigital.features.categories.Category;
+import co.istad.projectpracticum.phsardigital.features.categories.CategoryAvailability;
 import co.istad.projectpracticum.phsardigital.features.categories.CategoryRepository;
 import co.istad.projectpracticum.phsardigital.features.file.FileUpload;
 import co.istad.projectpracticum.phsardigital.features.file.FileUploadService;
@@ -47,6 +48,8 @@ public class ListingServiceImpl implements ListingService{
     private final ListingVisibility listingVisibility;
     private final ListingResponseFactory listingResponseFactory;
     private final ListingAttributeWriter listingAttributeWriter;
+    private final CategoryAvailability categoryAvailability;
+    private final ListingFacetValidator listingFacetValidator;
 
     /**
      * The moderation view: every seller's listings in one status.
@@ -99,15 +102,31 @@ public class ListingServiceImpl implements ListingService{
         Pageable pageable = PageRequest.of(pageNumber, pageSize, ListingSort.parse(sort));
 
         Specification<Listing> spec = ListingSpecifications.publiclyBrowsable();
+        Set<UUID> publiclyAvailableCategories = categoryRepository
+                .findAllByIsDeletedFalseAndIsActiveTrue(Sort.unsorted())
+                .stream()
+                .filter(categoryAvailability::isEffectivelyActive)
+                .map(Category::getUuid)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (publiclyAvailableCategories.isEmpty()) {
+            return Page.empty(pageable);
+        }
+        // Listing status and seller state are not enough: a deactivated ancestor hides
+        // the whole branch. Resolving effective category availability up front keeps
+        // even legacy inconsistent trees out without breaking page totals.
+        spec = spec.and(ListingSpecifications.inCategories(publiclyAvailableCategories));
 
         if (filter != null) {
-            Optional<Set<UUID>> categories = resolveCategories(filter);
-            if (categories.isPresent()) {
-                if (categories.get().isEmpty()) {
-                    // Named a category that does not exist: nothing matches it.
-                    return Page.empty(pageable);
-                }
-                spec = spec.and(ListingSpecifications.inCategories(categories.get()));
+            boolean categoryRequested = hasCategoryFilter(filter);
+            Optional<Category> rootCategory = resolveCategory(filter);
+            if (categoryRequested && rootCategory.isEmpty()) {
+                // Named a category that is missing or unavailable: nothing public
+                // matches it, and the response does not disclose which case it was.
+                return Page.empty(pageable);
+            }
+            if (rootCategory.isPresent()) {
+                spec = spec.and(ListingSpecifications.inCategories(
+                        withAvailableDescendants(rootCategory.get())));
             }
             if (hasText(filter.search())) {
                 spec = spec.and(ListingSpecifications.matching(filter.search()));
@@ -121,8 +140,12 @@ public class ListingServiceImpl implements ListingService{
             if (filter.maxPrice() != null) {
                 spec = spec.and(ListingSpecifications.pricedAtMost(filter.maxPrice()));
             }
-            if (filter.attributes() != null) {
-                for (AttributeFilter attribute : filter.attributes()) {
+            if (filter.attributes() != null && !filter.attributes().isEmpty()) {
+                Category category = rootCategory.orElseThrow(() ->
+                        new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                                "Attribute facets require categoryUuid or categorySlug."));
+                for (AttributeFilter attribute : listingFacetValidator.validate(
+                        category, filter.attributes())) {
                     spec = spec.and(ListingSpecifications.hasAttribute(attribute.key(), attribute.values()));
                 }
             }
@@ -139,7 +162,7 @@ public class ListingServiceImpl implements ListingService{
      * @return empty when no category was named at all; a present-but-empty set when one
      *         was named and does not exist
      */
-    private Optional<Set<UUID>> resolveCategories(ListingFilter filter) {
+    private Optional<Category> resolveCategory(ListingFilter filter) {
         Optional<Category> root;
         if (filter.categoryUuid() != null) {
             root = categoryRepository.findByUuidAndIsDeletedFalse(filter.categoryUuid());
@@ -148,24 +171,31 @@ public class ListingServiceImpl implements ListingService{
         } else {
             return Optional.empty();
         }
-        return Optional.of(root.map(this::withDescendants).orElseGet(Set::of));
+        return root.filter(categoryAvailability::isEffectivelyActive);
+    }
+
+    private static boolean hasCategoryFilter(ListingFilter filter) {
+        return filter.categoryUuid() != null || hasText(filter.categorySlug());
     }
 
     /**
      * Walks the category tree breadth-first. The visited set guards the traversal: a
      * parent cycle would otherwise hang the request rather than fail it.
      */
-    private Set<UUID> withDescendants(Category root) {
+    private Set<UUID> withAvailableDescendants(Category root) {
         Set<UUID> found = new LinkedHashSet<>();
         Deque<Category> pending = new ArrayDeque<>(List.of(root));
         while (!pending.isEmpty()) {
             Category category = pending.poll();
+            if (!categoryAvailability.isEffectivelyActive(category)) {
+                continue;
+            }
             if (!found.add(category.getUuid())) {
                 continue;
             }
             if (category.getChildCategories() != null) {
                 category.getChildCategories().stream()
-                        .filter(child -> !Boolean.TRUE.equals(child.getIsDeleted()))
+                        .filter(categoryAvailability::isEffectivelyActive)
                         .forEach(pending::add);
             }
         }
@@ -203,8 +233,7 @@ public class ListingServiceImpl implements ListingService{
     @Override
     @Transactional
     public ListingResponse create(ListingCreateRequest request) {
-        Category category = categoryRepository.findById(request.categoryUuid())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Category not found"));
+        Category category = publicCategoryOr404(request.categoryUuid());
 
         String slug = Utils.toSlug(request.title());
         if (listingRepository.existsBySlug(slug)) {
@@ -236,7 +265,7 @@ public class ListingServiceImpl implements ListingService{
         listing.setStockQty(request.stockQty());
         listing.setIsFeatured(request.isFeatured() != null ? request.isFeatured() : false);
         listing.setThumbnailFile(thumbnailFile);
-        listing.setStatus(ListingStatus.ACTIVE);
+        listing.setStatus(request.stockQty() > 0 ? ListingStatus.ACTIVE : ListingStatus.SOLD_OUT);
         listing.setSold(0);
 
         // Always run, even with no attributes given: an empty set is exactly what fails
@@ -253,17 +282,13 @@ public class ListingServiceImpl implements ListingService{
     @Override
     @Transactional
     public ListingResponse update(UUID uuid, UpdateListingRequest request) {
-        Listing listing = listingRepository.findByUuidWithDetails(uuid)
+        Listing listing = listingRepository.findByUuidForEdit(uuid)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found"));
-        String currentSellerId =  AuthUtils.extractUserId();
-        if (!listing.getSellerProfile().getSellerId().equals(currentSellerId)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not allowed to update this listing.");
-        }
-        requireNotSuspended(listing);
+        String currentSellerId = requireSellerCanEdit(
+                listing, "You are not allowed to update this listing.");
         boolean categoryChanged = false;
         if (request.categoryUuid() != null) {
-            Category category = categoryRepository.findById(request.categoryUuid())
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Category not found"));
+            Category category = publicCategoryOr404(request.categoryUuid());
             categoryChanged = !category.getUuid().equals(listing.getCategory().getUuid());
             listing.setCategory(category);
         }
@@ -305,7 +330,24 @@ public class ListingServiceImpl implements ListingService{
                     && request.status() != ListingStatus.ARCHIVED) {
                 subscriptionService.requirePostingAllowed(currentSellerId);
             }
+            if (isPublicStatus(request.status())
+                    && !categoryAvailability.isEffectivelyActive(listing.getCategory())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "This listing's category is not available in the public catalogue.");
+            }
+            if (request.status() == ListingStatus.ACTIVE && listing.getStockQty() <= 0) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "An out-of-stock listing cannot be activated. Add stock first.");
+            }
             listing.setStatus(request.status());
+        } else if (request.stockQty() != null) {
+            if (request.stockQty() == 0 && listing.getStatus() == ListingStatus.ACTIVE) {
+                listing.setStatus(ListingStatus.SOLD_OUT);
+            } else if (request.stockQty() > 0
+                    && listing.getStatus() == ListingStatus.SOLD_OUT
+                    && categoryAvailability.isEffectivelyActive(listing.getCategory())) {
+                listing.setStatus(ListingStatus.ACTIVE);
+            }
         }
         if (request.isFeatured() != null) {
             listing.setIsFeatured(request.isFeatured());
@@ -316,7 +358,7 @@ public class ListingServiceImpl implements ListingService{
         // the seller supplies the new answers in this same call.
         if (request.listingAttributes() != null) {
             listingAttributeWriter.apply(listing, request.listingAttributes());
-        } else if (categoryChanged) {
+        } else if (categoryChanged || (request.status() != null && isPublicStatus(request.status()))) {
             listingAttributeWriter.apply(listing, listingAttributeWriter.currentOf(listing));
         }
 
@@ -324,16 +366,27 @@ public class ListingServiceImpl implements ListingService{
         return listingResponseFactory.one(updated);
     }
 
+    private static boolean isPublicStatus(ListingStatus status) {
+        return status == ListingStatus.ACTIVE || status == ListingStatus.SOLD_OUT;
+    }
+
+    private Category publicCategoryOr404(UUID categoryUuid) {
+        Category category = categoryRepository.findByUuidAndIsDeletedFalse(categoryUuid)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Category not found"));
+        if (!categoryAvailability.isEffectivelyActive(category)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Category is not active in the public catalogue.");
+        }
+        return category;
+    }
+
     @Override
     @Transactional
     public ListingResponse clearDiscount(UUID uuid) {
         Listing listing = listingRepository.findByUuidWithDetails(uuid)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found"));
-        String currentSellerId = AuthUtils.extractUserId();
-        if (!listing.getSellerProfile().getSellerId().equals(currentSellerId)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not allowed to update this listing.");
-        }
-        requireNotSuspended(listing);
+        requireSellerCanEdit(listing, "You are not allowed to update this listing.");
         listing.setDiscountPrice(null);
         return listingResponseFactory.one(listingRepository.save(listing));
     }
@@ -343,11 +396,8 @@ public class ListingServiceImpl implements ListingService{
     public ListingResponse updateThumbnail(UUID uuid, String objectName) {
         Listing listing = listingRepository.findByUuidWithDetails(uuid)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found"));
-        String currentSellerId = AuthUtils.extractUserId();
-        if (!listing.getSellerProfile().getSellerId().equals(currentSellerId)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not allowed to update this listing.");
-        }
-        requireNotSuspended(listing);
+        String currentSellerId = requireSellerCanEdit(
+                listing, "You are not allowed to update this listing.");
         FileUpload newFile = fileUploadService.requireOwnedFile(objectName, currentSellerId);
         FileUpload oldFile = listing.getThumbnailFile();
         listing.setThumbnailFile(newFile);
@@ -362,11 +412,8 @@ public class ListingServiceImpl implements ListingService{
     public ListingResponse addImage(UUID uuid, AddListingImageRequest request) {
         Listing listing = listingRepository.findByUuidWithDetails(uuid)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found"));
-        String currentSellerId = AuthUtils.extractUserId();
-        if (!listing.getSellerProfile().getSellerId().equals(currentSellerId)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not allowed to update this listing.");
-        }
-        requireNotSuspended(listing);
+        String currentSellerId = requireSellerCanEdit(
+                listing, "You are not allowed to update this listing.");
         FileUpload file = fileUploadService.requireOwnedFile(request.objectName(), currentSellerId);
         ListingImage image = new ListingImage();
         image.setFile(file);
@@ -382,11 +429,7 @@ public class ListingServiceImpl implements ListingService{
     public ListingResponse reorderImages(UUID uuid, List<UUID> imageUuids) {
         Listing listing = listingRepository.findByUuidWithDetails(uuid)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found"));
-        String currentSellerId = AuthUtils.extractUserId();
-        if (!listing.getSellerProfile().getSellerId().equals(currentSellerId)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not allowed to update this listing.");
-        }
-        requireNotSuspended(listing);
+        requireSellerCanEdit(listing, "You are not allowed to update this listing.");
 
         Map<UUID, ListingImage> byUuid = listing.getImages().stream()
                 .collect(Collectors.toMap(ListingImage::getUuid, Function.identity()));
@@ -420,11 +463,7 @@ public class ListingServiceImpl implements ListingService{
 
         Listing listing = listingRepository.findByUuidWithDetails(listingUuid)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found"));
-        String currentSellerId = AuthUtils.extractUserId();
-        if (!listing.getSellerProfile().getSellerId().equals(currentSellerId)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not allowed to update this listing.");
-        }
-        requireNotSuspended(listing);
+        requireSellerCanEdit(listing, "You are not allowed to update this listing.");
         ListingImage toRemove = listing.getImages().stream()
                 .filter(img -> img.getUuid().equals(imageUuid))
                 .findFirst()
@@ -456,6 +495,16 @@ public class ListingServiceImpl implements ListingService{
                     "This listing has been suspended by an administrator and cannot be changed. "
                             + "Reason: " + listing.getModerationReason());
         }
+    }
+
+    private String requireSellerCanEdit(Listing listing, String forbiddenMessage) {
+        String sellerId = AuthUtils.extractUserId();
+        if (!listing.getSellerProfile().getSellerId().equals(sellerId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, forbiddenMessage);
+        }
+        requireNotSuspended(listing);
+        sellerAccessGuard.requireActiveSeller(sellerId);
+        return sellerId;
     }
 
     /**
@@ -502,12 +551,7 @@ public class ListingServiceImpl implements ListingService{
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found"));
 
         // 2. Authorization check
-        String currentSellerId = AuthUtils.extractUserId();
-        if (!listing.getSellerProfile().getSellerId().equals(currentSellerId)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "You are not allowed to delete this listing.");
-        }
-        requireNotSuspended(listing);
+        requireSellerCanEdit(listing, "You are not allowed to delete this listing.");
 
         // 3. Collect file names
         List<String> fileNamesToDelete = new ArrayList<>();

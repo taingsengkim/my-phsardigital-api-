@@ -207,7 +207,22 @@ class ListingAttributeValidatorTest {
         colours.setDataType(AttributeDataType.MULTI_SELECT);
         schema(colours);
 
-        assertThat(valueOf("colours", "black, WHITE ,black")).isEqualTo("Black, White");
+        ValidatedAttribute result = validator.validate(
+                phones, List.of(submitted("colours", "black, WHITE ,black"))).getFirst();
+
+        assertThat(result.value()).isEqualTo("Black, White");
+        assertThat(result.selectedValues()).containsExactly("Black", "White");
+    }
+
+    @Test
+    void leavesTheSelectedValueLookupEmptyForScalarAttributes() {
+        schema(select("panel", "Panel", "AMOLED", "LCD"));
+
+        ValidatedAttribute result = validator.validate(
+                phones, List.of(submitted("panel", "amoled"))).getFirst();
+
+        assertThat(result.value()).isEqualTo("AMOLED");
+        assertThat(result.selectedValues()).isEmpty();
     }
 
     /**

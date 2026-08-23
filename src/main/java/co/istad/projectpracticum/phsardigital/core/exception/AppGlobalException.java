@@ -28,6 +28,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.server.ResponseStatusException;
@@ -313,6 +314,21 @@ public class AppGlobalException {
     }
 
     // ---------------------------------------------------------------- database
+
+    /** A versioned category/listing was changed after this request read it. */
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ResponseEntity<RestErrorResponse> handleOptimisticLockingFailure(
+            ObjectOptimisticLockingFailureException exception,
+            HttpServletRequest request
+    ) {
+        return respond(
+                HttpStatus.CONFLICT,
+                "This resource was changed by another request. Reload it and try again.",
+                null,
+                request,
+                exception
+        );
+    }
 
     /**
      * A constraint the database refused. The root cause names the constraint,

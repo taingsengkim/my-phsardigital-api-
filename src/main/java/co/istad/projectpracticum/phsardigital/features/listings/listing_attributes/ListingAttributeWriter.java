@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -65,6 +66,12 @@ public class ListingAttributeWriter {
             attribute.setKey(value.key());
             attribute.setValue(value.value());
             attribute.setDefinition(value.definition());
+            if (attribute.getSelectedValues() == null) {
+                attribute.setSelectedValues(new LinkedHashSet<>());
+            } else {
+                attribute.getSelectedValues().clear();
+            }
+            attribute.getSelectedValues().addAll(value.selectedValues());
             Integer sortOrder = submitted.get(i).sortOrder();
             attribute.setSortOrder(sortOrder != null ? sortOrder : i);
             replacement.add(attribute);

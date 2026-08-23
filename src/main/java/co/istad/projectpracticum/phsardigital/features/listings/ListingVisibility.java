@@ -1,21 +1,18 @@
 package co.istad.projectpracticum.phsardigital.features.listings;
 
 import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
-
-import java.util.EnumSet;
-import java.util.Set;
 
 /**
  * Who is allowed to see a listing. Shared by every route that reads one, so the rule
  * deciding whether a suspended shop's products stay reachable has a single home.
  */
 @Component
+@RequiredArgsConstructor
 public class ListingVisibility {
 
-    /** The statuses a listing is browsable in. Everything else is private to its shop. */
-    private static final Set<ListingStatus> PUBLICLY_VISIBLE =
-            EnumSet.of(ListingStatus.ACTIVE, ListingStatus.SOLD_OUT);
+    private final ListingAvailability listingAvailability;
 
     /** Whether the current caller — signed in or not — may read this listing at all. */
     public boolean isVisible(Listing listing) {
@@ -27,8 +24,7 @@ public class ListingVisibility {
      * by direct link even though they are gone from search.
      */
     public boolean isPubliclyVisible(Listing listing) {
-        return PUBLICLY_VISIBLE.contains(listing.getStatus())
-                && Boolean.TRUE.equals(listing.getSellerProfile().getIsActive());
+        return listingAvailability.isPubliclyVisible(listing);
     }
 
     /**

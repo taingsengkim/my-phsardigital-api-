@@ -24,6 +24,10 @@ import java.util.Set;
  */
 public record AttributeFilter(String key, Set<String> values) {
 
+    private static final int MAX_FACETS = 12;
+    private static final int MAX_VALUES_PER_FACET = 50;
+    private static final int MAX_PARAMETER_LENGTH = 200;
+
     /**
      * Parses the raw parameters, collapsing repeats of a key into one facet.
      *
@@ -42,6 +46,10 @@ public record AttributeFilter(String key, Set<String> values) {
             if (parameter == null || parameter.isBlank()) {
                 continue;
             }
+            if (parameter.length() > MAX_PARAMETER_LENGTH) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "An attribute filter must not exceed " + MAX_PARAMETER_LENGTH + " characters.");
+            }
             // The first colon only: a value may well contain one, as "6.7:1" does.
             int separator = parameter.indexOf(':');
             if (separator < 0) {
@@ -52,8 +60,20 @@ public record AttributeFilter(String key, Set<String> values) {
             if (key.isEmpty() || value.isEmpty()) {
                 throw malformed(parameter);
             }
-            byKey.computeIfAbsent(key.toLowerCase(Locale.ROOT), ignored -> new LinkedHashSet<>())
-                    .add(value.toLowerCase(Locale.ROOT));
+            String normalisedKey = key.toLowerCase(Locale.ROOT);
+            if (!byKey.containsKey(normalisedKey) && byKey.size() == MAX_FACETS) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "No more than " + MAX_FACETS + " attribute facets may be requested.");
+            }
+            Set<String> values = byKey.computeIfAbsent(
+                    normalisedKey, ignored -> new LinkedHashSet<>());
+            String normalisedValue = value.toLowerCase(Locale.ROOT);
+            if (!values.contains(normalisedValue) && values.size() == MAX_VALUES_PER_FACET) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "No more than " + MAX_VALUES_PER_FACET
+                                + " values may be requested for attribute '" + key + "'.");
+            }
+            values.add(normalisedValue);
         }
 
         List<AttributeFilter> filters = new ArrayList<>();

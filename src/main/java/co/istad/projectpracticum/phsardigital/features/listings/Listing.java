@@ -56,7 +56,13 @@ public class Listing extends BasedEntity {
     private Integer stockQty;
 
     @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
     private ListingStatus status;
+
+    /** Detects concurrent catalogue edits outside the explicitly locked full-set paths. */
+    @Version
+    @Column(nullable = false, columnDefinition = "bigint default 0")
+    private Long version = 0L;
 
     @Column(nullable = false)
     private Boolean isFeatured;
@@ -88,7 +94,7 @@ public class Listing extends BasedEntity {
 
 
     @OneToMany( mappedBy = "listing" , orphanRemoval = true, cascade = CascadeType.ALL)
-    private List<ListingAttribute> listingAttributes ;
+    private List<ListingAttribute> listingAttributes = new ArrayList<>();
 
     // Moderation. Shaped after SellerApplication's reviewedBy/reviewedAt/rejectionNote
     // so "who did this and why" is answered the same way across the admin surface.

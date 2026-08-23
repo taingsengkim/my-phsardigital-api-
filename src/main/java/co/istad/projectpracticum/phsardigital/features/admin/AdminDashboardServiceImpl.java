@@ -1,6 +1,9 @@
 package co.istad.projectpracticum.phsardigital.features.admin;
 
 import co.istad.projectpracticum.phsardigital.features.admin.dto.AdminDashboardSummaryResponse;
+import co.istad.projectpracticum.phsardigital.features.categories.Category;
+import co.istad.projectpracticum.phsardigital.features.categories.CategoryAvailability;
+import co.istad.projectpracticum.phsardigital.features.categories.CategoryRepository;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingRepository;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingStatus;
 import co.istad.projectpracticum.phsardigital.features.purchases.PurchaseRepository;
@@ -13,6 +16,7 @@ import co.istad.projectpracticum.phsardigital.features.subscription.Subscription
 import co.istad.projectpracticum.phsardigital.features.subscription.SubscriptionStatus;
 import co.istad.projectpracticum.phsardigital.features.user.UserProfileRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,8 +27,12 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.EnumMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 import static co.istad.projectpracticum.phsardigital.features.admin.dto.AdminDashboardSummaryResponse.ApplicationSummary;
 import static co.istad.projectpracticum.phsardigital.features.admin.dto.AdminDashboardSummaryResponse.ListingSummary;
@@ -45,6 +53,8 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
 
     private final UserProfileRepository userRepository;
     private final SellerProfileRepository sellerProfileRepository;
+    private final CategoryRepository categoryRepository;
+    private final CategoryAvailability categoryAvailability;
     private final ListingRepository listingRepository;
     private final SellerApplicationRepository applicationRepository;
     private final PurchaseRepository purchaseRepository;
@@ -73,8 +83,7 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
                         sellerProfileRepository.countByIsActiveTrue()),
                 new ListingSummary(
                         listingRepository.count(),
-                        listingRepository.countByStatusAndSellerProfile_IsActiveTrue(
-                                ListingStatus.ACTIVE)),
+                        countPubliclyAvailableListings()),
                 new ApplicationSummary(
                         applicationRepository.countByStatus(ApplicationStatus.PENDING)),
                 new PurchaseSummary(
@@ -82,6 +91,27 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
                         new Money(completedGmv(), MARKETPLACE_CURRENCY_CODE)),
                 new SubscriptionSummary(byPlan),
                 asOf);
+    }
+
+    /**
+     * A listing's direct category flags are insufficient: an unavailable ancestor
+     * hides the whole branch. Resolve the effective category set with the same
+     * cycle- and depth-aware rule used by public catalogue reads, then count only
+     * listings assigned to that set.
+     */
+    private long countPubliclyAvailableListings() {
+        Set<UUID> categoryUuids = categoryRepository
+                .findAllByIsDeletedFalseAndIsActiveTrue(Sort.unsorted())
+                .stream()
+                .filter(categoryAvailability::isEffectivelyActive)
+                .map(Category::getUuid)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+
+        if (categoryUuids.isEmpty()) {
+            return 0L;
+        }
+        return listingRepository.countBuyableByStatusInCategories(
+                ListingStatus.ACTIVE, categoryUuids);
     }
 
     /**

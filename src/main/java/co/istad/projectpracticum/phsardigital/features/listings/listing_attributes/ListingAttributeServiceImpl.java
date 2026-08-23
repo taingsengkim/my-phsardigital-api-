@@ -4,9 +4,11 @@ import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
 import co.istad.projectpracticum.phsardigital.features.categories.category_attributes.CategoryAttributeResolver;
 import co.istad.projectpracticum.phsardigital.features.listings.Listing;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingRepository;
+import co.istad.projectpracticum.phsardigital.features.listings.ListingStatus;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_attributes.dto.ListingAttributeCreateRequest;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_attributes.dto.ListingAttributeResponse;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_attributes.dto.UpdateAttributeRequest;
+import co.istad.projectpracticum.phsardigital.features.seller.SellerAccessGuard;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -30,6 +32,7 @@ public class ListingAttributeServiceImpl implements ListingAttributeService {
     private final ListingRepository listingRepository;
     private final ListingAttributeMapper listingAttributeMapper;
     private final ListingAttributeWriter listingAttributeWriter;
+    private final SellerAccessGuard sellerAccessGuard;
 
     @Override
     @Transactional
@@ -62,7 +65,7 @@ public class ListingAttributeServiceImpl implements ListingAttributeService {
                     request.sortOrder() != null ? request.sortOrder() : nextSortOrder++));
         }
 
-        return respond(listingAttributeWriter.apply(listing, desired));
+        return respondAfterFlush(listing, listingAttributeWriter.apply(listing, desired));
     }
 
     @Override
@@ -95,7 +98,8 @@ public class ListingAttributeServiceImpl implements ListingAttributeService {
                     current.sortOrder()));
         }
 
-        return respond(listingAttributeWriter.apply(listing, new ArrayList<>(desired.values())));
+        return respondAfterFlush(listing,
+                listingAttributeWriter.apply(listing, new ArrayList<>(desired.values())));
     }
 
     @Override
@@ -126,16 +130,36 @@ public class ListingAttributeServiceImpl implements ListingAttributeService {
 
     /** The listing, if it exists and the caller is the seller who owns it. */
     private Listing editableListing(UUID listingUuid, String forbiddenMessage) {
-        Listing listing = listingRepository.findByUuidWithDetails(listingUuid)
+        // Attribute endpoints replace a complete set. Locking the listing prevents two
+        // concurrent PATCH/DELETE requests from validating the same old set and then
+        // silently overwriting one another.
+        Listing listing = listingRepository.findByUuidForEdit(listingUuid)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found"));
 
-        if (!listing.getSellerProfile().getSellerId().equals(AuthUtils.extractUserId())) {
+        String sellerId = AuthUtils.extractUserId();
+        if (!listing.getSellerProfile().getSellerId().equals(sellerId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, forbiddenMessage);
         }
+        if (listing.getStatus() == ListingStatus.SUSPENDED) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "This listing has been suspended by an administrator and its attributes "
+                            + "cannot be changed. Reason: " + listing.getModerationReason());
+        }
+        sellerAccessGuard.requireActiveSeller(sellerId);
         return listing;
     }
 
     private List<ListingAttributeResponse> respond(List<ListingAttribute> attributes) {
         return attributes.stream().map(listingAttributeMapper::toResponse).toList();
+    }
+
+    /**
+     * New attribute UUIDs are assigned during persistence. Flush before mapping so a
+     * successful POST/PATCH never responds with a null UUID for a row it just created.
+     */
+    private List<ListingAttributeResponse> respondAfterFlush(
+            Listing listing, List<ListingAttribute> attributes) {
+        listingRepository.saveAndFlush(listing);
+        return respond(attributes);
     }
 }

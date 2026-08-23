@@ -27,9 +27,11 @@ public interface CategoryAttributeRepository extends JpaRepository<CategoryAttri
 
     Optional<CategoryAttribute> findByUuidAndIsDeletedFalse(UUID uuid);
 
-    boolean existsByCategory_UuidAndCodeAndIsDeletedFalse(UUID categoryUuid, String code);
-
-    boolean existsByCategory_UuidAndCodeAndIsDeletedFalseAndUuidNot(UUID categoryUuid, String code, UUID uuid);
+    /** Includes soft-deleted rows so create can restore the stable definition UUID. */
+    @EntityGraph(attributePaths = {"options", "category"})
+    Optional<CategoryAttribute> findByCategory_UuidAndCodeIgnoreCase(UUID categoryUuid, String code);
 
     boolean existsByCategory_Uuid(UUID categoryUuid);
+
+    long countByCategory_UuidAndIsDeletedFalse(UUID categoryUuid);
 }

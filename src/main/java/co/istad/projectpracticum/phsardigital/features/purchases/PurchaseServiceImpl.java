@@ -7,6 +7,7 @@ import co.istad.projectpracticum.phsardigital.features.cart.Cart;
 import co.istad.projectpracticum.phsardigital.features.cart.CartItem;
 import co.istad.projectpracticum.phsardigital.features.cart.CartRepository;
 import co.istad.projectpracticum.phsardigital.features.listings.Listing;
+import co.istad.projectpracticum.phsardigital.features.listings.ListingAvailability;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingRepository;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingStatus;
 import co.istad.projectpracticum.phsardigital.features.purchases.dto.*;
@@ -36,6 +37,7 @@ public class PurchaseServiceImpl implements PurchaseService {
     private final PurchaseMapper purchaseMapper;
     private final SellerAccessGuard sellerAccessGuard;
     private final AddressService addressService;
+    private final ListingAvailability listingAvailability;
 
     @Override
     @Transactional
@@ -66,10 +68,7 @@ public class PurchaseServiceImpl implements PurchaseService {
         for (CartItem cartItem : cart.getItems()) {
             Listing listing = cartItem.getListing();
 
-            if (listing.getStatus() != ListingStatus.ACTIVE) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "Listing is no longer available: " + listing.getTitle());
-            }
+            listingAvailability.requireBuyable(listing);
             // soft check, real reservation happens at confirm
             if (listing.getStockQty() < cartItem.getQuantity()) {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
@@ -120,7 +119,13 @@ public class PurchaseServiceImpl implements PurchaseService {
             }
             listing.setStockQty(listing.getStockQty() - item.getQuantity());
             listing.setSold(listing.getSold() + item.getQuantity());
-            if (listing.getStockQty() == 0) {
+            // Stock depletion may refine a sellable listing to SOLD_OUT, but it must
+            // never erase a stronger lifecycle state. In particular, an order placed
+            // before moderation must not turn SUSPENDED into a public status when the
+            // seller confirms it; restore will inspect the new stock and choose the
+            // truthful public state later.
+            if (listing.getStockQty() == 0
+                    && listing.getStatus() == ListingStatus.ACTIVE) {
                 listing.setStatus(ListingStatus.SOLD_OUT);
             }
             listingRepository.save(listing);

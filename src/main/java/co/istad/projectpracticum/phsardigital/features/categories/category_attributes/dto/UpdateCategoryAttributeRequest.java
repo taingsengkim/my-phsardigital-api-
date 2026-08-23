@@ -9,11 +9,13 @@ import jakarta.validation.constraints.Size;
 import java.util.List;
 
 /**
- * Every field is optional: null means "leave it alone".
+ * Every field is optional: null means "leave it alone". The code remains in the
+ * contract for compatibility, but it is a stable identifier: sending the current code
+ * is idempotent and trying to rename it is rejected.
  *
- * <p>Which is why there is no way to clear a unit or a bound here — those are the fields
- * where null is already the meaningful value, and a PATCH cannot tell "unset it" from
- * "don't touch it". Delete and re-create the attribute to drop one.
+ * <p>Use the matching {@code clear...} flag to remove a nullable unit or numeric bound;
+ * null by itself continues to mean "do not change it". Sending a value and its clear
+ * flag together is rejected as ambiguous.
  *
  * @param options when given, replaces the whole option list rather than appending to it,
  *                so removing a discontinued size is one call
@@ -28,6 +30,7 @@ public record UpdateCategoryAttributeRequest(
         String code,
 
         @Size(max = 150, message = "Label must not exceed 150 characters")
+        @Pattern(regexp = "(?s).*\\S.*", message = "Label must not be blank")
         String label,
 
         @Size(max = 100, message = "Group must not exceed 100 characters")
@@ -38,13 +41,19 @@ public record UpdateCategoryAttributeRequest(
         @Size(max = 20, message = "Unit must not exceed 20 characters")
         String unit,
 
+        Boolean clearUnit,
+
         Boolean required,
 
         Boolean filterable,
 
         Double minValue,
 
+        Boolean clearMinValue,
+
         Double maxValue,
+
+        Boolean clearMaxValue,
 
         @Min(value = 0, message = "Sort order must be 0 or greater")
         Integer sortOrder,

@@ -4,8 +4,8 @@ import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
 import co.istad.projectpracticum.phsardigital.features.cart.dto.*;
 import co.istad.projectpracticum.phsardigital.features.file.FileUploadService;
 import co.istad.projectpracticum.phsardigital.features.listings.Listing;
+import co.istad.projectpracticum.phsardigital.features.listings.ListingAvailability;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingRepository;
-import co.istad.projectpracticum.phsardigital.features.listings.ListingStatus;
 import co.istad.projectpracticum.phsardigital.features.seller.SellerAccessGuard;
 import co.istad.projectpracticum.phsardigital.features.seller.SellerProfileMapper;
 import co.istad.projectpracticum.phsardigital.features.seller.dto.SellerProfileSummaryResponse;
@@ -23,6 +23,7 @@ public class CartServiceImpl implements CartService {
 
     private final CartRepository cartRepository;
     private final ListingRepository listingRepository;
+    private final ListingAvailability listingAvailability;
     private final SellerAccessGuard sellerAccessGuard;
     private final SellerProfileMapper sellerProfileMapper;
     private final FileUploadService fileUploadService;
@@ -52,9 +53,7 @@ public class CartServiceImpl implements CartService {
         String buyerId = AuthUtils.extractUserId();
         Listing listing = listingRepository.findById(request.listingUuid())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found."));
-        if (listing.getStatus() != ListingStatus.ACTIVE) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Listing is not available: " + listing.getTitle());
-        }
+        listingAvailability.requireBuyable(listing);
         String sellerId = listing.getSellerProfile().getSellerId();
         // Checkout refuses a suspended shop anyway; refusing here too means the buyer
         // finds out before they have built a basket they cannot buy.
@@ -98,6 +97,8 @@ public class CartServiceImpl implements CartService {
                 .filter(i -> i.getUuid().equals(itemUuid))
                 .findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Item not in cart."));
+        listingAvailability.requireBuyable(item.getListing());
+        sellerAccessGuard.requireActiveSeller(item.getListing().getSellerProfile().getSellerId());
         if (item.getListing().getStockQty() < request.quantity()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Not enough stock for: " + item.getListing().getTitle());
         }

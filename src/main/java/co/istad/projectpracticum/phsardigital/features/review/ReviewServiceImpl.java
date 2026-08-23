@@ -7,6 +7,7 @@ import co.istad.projectpracticum.phsardigital.features.file.FileUploadService;
 import co.istad.projectpracticum.phsardigital.features.listings.Listing;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingRepository;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingStatus;
+import co.istad.projectpracticum.phsardigital.features.listings.ListingVisibility;
 import co.istad.projectpracticum.phsardigital.features.purchases.PurchaseRepository;
 import co.istad.projectpracticum.phsardigital.features.purchases.PurchaseStatus;
 import co.istad.projectpracticum.phsardigital.features.review.dto.ReviewReplyRequest;
@@ -51,11 +52,15 @@ public class ReviewServiceImpl implements ReviewService {
     private final ReviewMapper reviewMapper;
     private final ReviewReplyMapper replyMapper;
     private final PurchaseRepository purchaseRepository;
+    private final ListingVisibility listingVisibility;
 
     @Override
     public Page<ReviewResponse> getReviewsForListing(UUID listingUuid, Pageable pageable) {
         Listing listing = listingRepository.findById(listingUuid)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found"));
+        if (!listingVisibility.isVisible(listing)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found");
+        }
         return reviewRepository.findByListing(listing, pageable)
                 .map(reviewMapper::toResponse);
     }

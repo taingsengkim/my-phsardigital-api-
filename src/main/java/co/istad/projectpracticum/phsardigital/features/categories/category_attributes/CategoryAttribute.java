@@ -97,6 +97,11 @@ public class CategoryAttribute extends BasedEntity {
     @Column(name = "is_deleted", nullable = false)
     private Boolean isDeleted = false;
 
+    /** Detects concurrent schema edits instead of silently losing one administrator's work. */
+    @Version
+    @Column(nullable = false, columnDefinition = "bigint default 0")
+    private Long version = 0L;
+
     /** The permitted values, for SELECT and MULTI_SELECT. Empty for every other type. */
     @OneToMany(mappedBy = "attribute", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("sortOrder ASC")

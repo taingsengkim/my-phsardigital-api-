@@ -1,9 +1,15 @@
 package co.istad.projectpracticum.phsardigital.features.listings;
 
+import co.istad.projectpracticum.phsardigital.features.categories.category_attributes.AttributeDataType;
+import co.istad.projectpracticum.phsardigital.features.categories.category_attributes.CategoryAttribute;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_attributes.ListingAttribute;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Expression;
+import jakarta.persistence.criteria.Join;
+import jakarta.persistence.criteria.JoinType;
+import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.SetJoin;
 import jakarta.persistence.criteria.Subquery;
 import org.springframework.data.jpa.domain.Specification;
 
@@ -31,7 +37,10 @@ final class ListingSpecifications {
     static Specification<Listing> publiclyBrowsable() {
         return (root, query, builder) -> builder.and(
                 builder.equal(root.get("status"), ListingStatus.ACTIVE),
-                builder.isTrue(root.get("sellerProfile").get("isActive")));
+                builder.greaterThan(root.get("stockQty"), 0),
+                builder.isTrue(root.get("sellerProfile").get("isActive")),
+                builder.isTrue(root.get("category").get("isActive")),
+                builder.isFalse(root.get("category").get("isDeleted")));
     }
 
     /**
@@ -86,7 +95,9 @@ final class ListingSpecifications {
 
     /**
      * Listings carrying this attribute at one of these values — the facet panel's "8 GB
-     * or 12 GB of RAM".
+     * or 12 GB of RAM". Scalar answers compare against {@code value}; MULTI_SELECT
+     * answers compare against their individually stored {@code selectedValues}, so
+     * choosing Black also finds a listing displayed as "Black, White".
      *
      * <p>An {@code EXISTS} subquery rather than a join: a listing has many attributes, and
      * joining them would return the same listing once per matching row, which breaks the
@@ -105,12 +116,44 @@ final class ListingSpecifications {
         return (root, query, builder) -> {
             Subquery<UUID> subquery = query.subquery(UUID.class);
             Root<ListingAttribute> attribute = subquery.from(ListingAttribute.class);
+            SetJoin<ListingAttribute, String> selectedValue =
+                    attribute.joinSet("selectedValues", JoinType.LEFT);
+            // A custom scalar attribute has no definition. This must be a LEFT join;
+            // navigating the nullable association as an implicit inner join would make
+            // the scalar branch below silently stop matching custom attributes.
+            Join<ListingAttribute, CategoryAttribute> definition =
+                    attribute.join("definition", JoinType.LEFT);
+            Expression<String> compactDisplayValue = builder.function(
+                    "replace", String.class,
+                    builder.lower(attribute.get("value")),
+                    builder.literal(", "),
+                    builder.literal(","));
+            Expression<String> paddedDisplayValue = builder.concat(
+                    builder.concat(",", compactDisplayValue), ",");
+            Predicate legacyMultiSelectMatch = builder.and(
+                    builder.equal(definition.get("dataType"),
+                            AttributeDataType.MULTI_SELECT),
+                    builder.or(wanted.stream()
+                            .map(value -> builder.like(
+                                    paddedDisplayValue,
+                                    "%," + escapeLike(value) + ",%",
+                                    '\\'))
+                            .toArray(Predicate[]::new)));
             subquery.select(attribute.get("listing").get("uuid"));
             subquery.where(builder.and(
                     builder.equal(attribute.get("listing").get("uuid"), root.get("uuid")),
                     builder.equal(builder.lower(attribute.get("key")), wantedKey),
-                    builder.lower(attribute.get("value")).in(wanted)));
+                    builder.or(
+                            builder.lower(attribute.get("value")).in(wanted),
+                            builder.lower(selectedValue).in(wanted),
+                            legacyMultiSelectMatch)));
             return builder.exists(subquery);
         };
+    }
+
+    private static String escapeLike(String value) {
+        return value.replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_");
     }
 }

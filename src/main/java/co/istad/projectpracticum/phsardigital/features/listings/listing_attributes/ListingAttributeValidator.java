@@ -38,6 +38,7 @@ public class ListingAttributeValidator {
 
     /** Both columns on {@code listing_attributes} are {@code varchar(100)}. */
     private static final int MAX_LENGTH = 100;
+    public static final int MAX_ATTRIBUTES = 100;
 
     private static final Set<String> TRUTHY = Set.of("true", "yes", "y", "1");
     private static final Set<String> FALSY = Set.of("false", "no", "n", "0");
@@ -52,7 +53,26 @@ public class ListingAttributeValidator {
      * @param definition the category attribute it answers, or null when the seller
      *                   supplied a spec the category does not define
      */
-    public record ValidatedAttribute(String key, String value, CategoryAttribute definition) {
+    public record ValidatedAttribute(String key, String value, CategoryAttribute definition,
+                                     Set<String> selectedValues) {
+
+        public ValidatedAttribute {
+            selectedValues = selectedValues == null
+                    ? Set.of()
+                    : java.util.Collections.unmodifiableSet(new LinkedHashSet<>(selectedValues));
+        }
+
+        /** Scalar attributes have no entries in the multi-select lookup table. */
+        public ValidatedAttribute(String key, String value, CategoryAttribute definition) {
+            this(key, value, definition, Set.of());
+        }
+    }
+
+    private record NormalisedValue(String displayValue, Set<String> selectedValues) {
+
+        private static NormalisedValue scalar(String value) {
+            return new NormalisedValue(value, Set.of());
+        }
     }
 
     /**
@@ -62,6 +82,9 @@ public class ListingAttributeValidator {
      * @return the same attributes, normalised, in the order given
      */
     public List<ValidatedAttribute> validate(Category category, List<SubmittedAttribute> submitted) {
+        if (submitted != null && submitted.size() > MAX_ATTRIBUTES) {
+            throw badRequest("A listing may have at most " + MAX_ATTRIBUTES + " attributes.");
+        }
         // Resolved once and passed down: the walk up the category tree is a query, and
         // the required check below needs the same list the lookup is built from.
         List<CategoryAttribute> schema = categoryAttributeResolver.effectiveFor(category);
@@ -92,7 +115,9 @@ public class ListingAttributeValidator {
             if (key.length() > MAX_LENGTH) {
                 throw badRequest("Attribute key must not exceed " + MAX_LENGTH + " characters: " + key);
             }
-            validated.add(new ValidatedAttribute(key, normalise(definition, key, attribute.value()), definition));
+            NormalisedValue value = normalise(definition, key, attribute.value());
+            validated.add(new ValidatedAttribute(
+                    key, value.displayValue(), definition, value.selectedValues()));
         }
 
         requireMandatory(category, schema, seen.keySet());
@@ -112,13 +137,13 @@ public class ListingAttributeValidator {
         }
     }
 
-    private String normalise(CategoryAttribute definition, String key, String rawValue) {
+    private NormalisedValue normalise(CategoryAttribute definition, String key, String rawValue) {
         String value = rawValue == null ? "" : rawValue.trim();
         if (value.isEmpty()) {
             throw badRequest("A value is required for attribute '" + key + "'.");
         }
         if (definition == null) {
-            return requireFits(key, value);
+            return NormalisedValue.scalar(requireFits(key, value));
         }
 
         // A choice type with no options left is a half-finished admin edit, not a reason
@@ -127,14 +152,20 @@ public class ListingAttributeValidator {
                 ? AttributeDataType.TEXT
                 : definition.getDataType();
 
+        if (type == AttributeDataType.MULTI_SELECT) {
+            Set<String> selectedValues = normaliseMultiSelect(definition, value);
+            return new NormalisedValue(
+                    requireFits(key, String.join(", ", selectedValues)), selectedValues);
+        }
+
         String normalised = switch (type) {
             case NUMBER -> normaliseNumber(definition, value);
             case BOOLEAN -> normaliseBoolean(definition, value);
             case SELECT -> matchOption(definition, value);
-            case MULTI_SELECT -> normaliseMultiSelect(definition, value);
             case TEXT -> value;
+            case MULTI_SELECT -> throw new IllegalStateException("Handled above");
         };
-        return requireFits(key, normalised);
+        return NormalisedValue.scalar(requireFits(key, normalised));
     }
 
     private String normaliseNumber(CategoryAttribute definition, String value) {
@@ -146,12 +177,13 @@ public class ListingAttributeValidator {
                     + (definition.getUnit() == null
                     ? "." : ", in " + definition.getUnit() + " — leave the unit out of the value."));
         }
-        double actual = number.doubleValue();
-        if (definition.getMinValue() != null && actual < definition.getMinValue()) {
+        if (definition.getMinValue() != null
+                && number.compareTo(BigDecimal.valueOf(definition.getMinValue())) < 0) {
             throw badRequest(label(definition) + " must be at least "
                     + trim(definition.getMinValue()) + unitSuffix(definition) + ".");
         }
-        if (definition.getMaxValue() != null && actual > definition.getMaxValue()) {
+        if (definition.getMaxValue() != null
+                && number.compareTo(BigDecimal.valueOf(definition.getMaxValue())) > 0) {
             throw badRequest(label(definition) + " must be at most "
                     + trim(definition.getMaxValue()) + unitSuffix(definition) + ".");
         }
@@ -171,7 +203,7 @@ public class ListingAttributeValidator {
         throw badRequest(label(definition) + " must be true or false.");
     }
 
-    private String normaliseMultiSelect(CategoryAttribute definition, String value) {
+    private Set<String> normaliseMultiSelect(CategoryAttribute definition, String value) {
         // A set, so listing the same option twice is tidied rather than rejected — it is
         // a typo, not a different meaning.
         Set<String> chosen = new LinkedHashSet<>();
@@ -184,7 +216,7 @@ public class ListingAttributeValidator {
         if (chosen.isEmpty()) {
             throw badRequest(label(definition) + " needs at least one value.");
         }
-        return String.join(", ", chosen);
+        return chosen;
     }
 
     /** Matches on value or label, ignoring case, and answers with the canonical value. */

@@ -22,6 +22,14 @@ public abstract class CategoryMapper {
     @Mapping(target = "parentCategory", ignore = true)
     @Mapping(target = "iconFile", ignore = true)
     @Mapping(target = "level", ignore = true)
+    @Mapping(target = "version", ignore = true)
+    @Mapping(target = "uuid", ignore = true)
+    @Mapping(target = "isDeleted", ignore = true)
+    @Mapping(target = "childCategories", ignore = true)
+    @Mapping(target = "createdAt", ignore = true)
+    @Mapping(target = "lastModifiedAt", ignore = true)
+    @Mapping(target = "createdBy", ignore = true)
+    @Mapping(target = "lastModifiedBy", ignore = true)
     public abstract Category toCategory(CategoryRequest categoryRequest);
 
     @Mapping(target = "parentUuid", source = "parentCategory.uuid")

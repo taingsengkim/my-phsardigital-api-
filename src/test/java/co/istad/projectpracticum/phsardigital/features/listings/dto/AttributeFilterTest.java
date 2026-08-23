@@ -5,6 +5,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -79,6 +80,26 @@ class AttributeFilterTest {
                 .singleElement()
                 .extracting(AttributeFilter::key)
                 .isEqualTo("ram");
+    }
+
+    @Test
+    void limitsFacetCountValueCountAndParameterLength() {
+        List<String> tooManyFacets = IntStream.rangeClosed(1, 13)
+                .mapToObj(index -> "key" + index + ":value")
+                .toList();
+        List<String> tooManyValues = IntStream.rangeClosed(1, 51)
+                .mapToObj(index -> "ram:value" + index)
+                .toList();
+
+        assertThatThrownBy(() -> AttributeFilter.parse(tooManyFacets))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("12 attribute facets");
+        assertThatThrownBy(() -> AttributeFilter.parse(tooManyValues))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("50 values");
+        assertThatThrownBy(() -> AttributeFilter.parse(List.of("ram:" + "x".repeat(197))))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("200 characters");
     }
 
     @Test

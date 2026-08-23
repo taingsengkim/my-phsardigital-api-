@@ -8,6 +8,8 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -35,15 +37,20 @@ public class ListingAttribute extends BasedEntity {
     @Column(length = 100, nullable = false)
     private String key ;
 
-    @NotBlank(message = "Attribute key is required")
+    @NotBlank(message = "Attribute value is required")
     @Column(length = 100, nullable = false)
     private String value ;
 
     @Column(name = "sort_order")
     private Integer sortOrder = 0 ;
 
-    @ManyToOne
-    @JoinColumn( name = "listing_uuid")
+    /** Detects concurrent edits to the same listing specification row. */
+    @Version
+    @Column(nullable = false, columnDefinition = "bigint default 0")
+    private Long version = 0L;
+
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "listing_uuid", nullable = false)
     private Listing listing ;
 
     /**
@@ -58,5 +65,23 @@ public class ListingAttribute extends BasedEntity {
     @ManyToOne
     @JoinColumn(name = "category_attribute_uuid")
     private CategoryAttribute definition;
+
+    /**
+     * The individually queryable values of a MULTI_SELECT answer.
+     *
+     * <p>{@link #value} intentionally remains the joined display value for API and
+     * backwards compatibility. Keeping the selected values in their own rows is what
+     * lets a facet for {@code Black} match a listing whose displayed value is
+     * {@code "Black, White"}; equality against the joined string cannot do that.
+     */
+    @ElementCollection
+    @CollectionTable(
+            name = "listing_attribute_selected_values",
+            joinColumns = @JoinColumn(name = "listing_attribute_uuid", nullable = false),
+            uniqueConstraints = @UniqueConstraint(
+                    columnNames = {"listing_attribute_uuid", "selected_value"})
+    )
+    @Column(name = "selected_value", nullable = false, length = 100)
+    private Set<String> selectedValues = new LinkedHashSet<>();
 
 }

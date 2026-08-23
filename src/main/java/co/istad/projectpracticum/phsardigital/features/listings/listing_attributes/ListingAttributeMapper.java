@@ -26,6 +26,8 @@ public abstract class ListingAttributeMapper {
     @Mapping(target = "uuid", ignore = true)
     @Mapping(target = "listing", ignore = true)
     @Mapping(target = "definition", ignore = true)
+    @Mapping(target = "selectedValues", ignore = true)
+    @Mapping(target = "version", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
     @Mapping(target = "lastModifiedAt", ignore = true)
     @Mapping(target = "createdBy", ignore = true)

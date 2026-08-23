@@ -3,21 +3,30 @@ package co.istad.projectpracticum.phsardigital.features.favorites;
 
 import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
 import co.istad.projectpracticum.phsardigital.features.listings.Listing;
+import co.istad.projectpracticum.phsardigital.features.listings.ListingAvailability;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingRepository;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingResponseFactory;
+import co.istad.projectpracticum.phsardigital.features.listings.ListingStatus;
+import co.istad.projectpracticum.phsardigital.features.categories.Category;
+import co.istad.projectpracticum.phsardigital.features.categories.CategoryAvailability;
+import co.istad.projectpracticum.phsardigital.features.categories.CategoryRepository;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingResponse;
 import co.istad.projectpracticum.phsardigital.features.user.UserProfile;
 import co.istad.projectpracticum.phsardigital.features.user.UserProfileRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -27,6 +36,9 @@ public class FavoriteServiceImpl implements FavoriteService {
     private final UserProfileRepository userProfileRepository;
     private final ListingRepository listingRepository;
     private final ListingResponseFactory listingResponseFactory;
+    private final ListingAvailability listingAvailability;
+    private final CategoryRepository categoryRepository;
+    private final CategoryAvailability categoryAvailability;
 
     @Override
     public Page<ListingResponse> getFavorites(Pageable pageable) {
@@ -37,7 +49,16 @@ public class FavoriteServiceImpl implements FavoriteService {
                         HttpStatus.NOT_FOUND, "User not found"));
 
         // 2. Fetch paginated favorites
-        Page<Favorite> favoritesPage = favoriteRepository.findByUserProfile(userProfile, pageable);
+        Set<UUID> publicCategoryUuids = publicCategoryUuids();
+        if (publicCategoryUuids.isEmpty()) {
+            return Page.empty(pageable);
+        }
+        Page<Favorite> favoritesPage = favoriteRepository
+                .findPublicByUserProfile(
+                        userProfile,
+                        List.of(ListingStatus.ACTIVE, ListingStatus.SOLD_OUT),
+                        publicCategoryUuids,
+                        pageable);
 
         // 3. Through the factory, not the mapper, so a saved product carries the same
         // rating and isFavorite the catalogue gave it rather than three nulls.
@@ -57,6 +78,9 @@ public class FavoriteServiceImpl implements FavoriteService {
         Listing listing = listingRepository.findById(listingUuid)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Listing not found"));
+        if (!listingAvailability.isPubliclyVisible(listing)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found");
+        }
 
 
         // 3. Check duplicate
@@ -94,5 +118,13 @@ public class FavoriteServiceImpl implements FavoriteService {
 
         // 4. Delete all found favorites
         favoriteRepository.deleteAll(favorites);
+    }
+
+    private Set<UUID> publicCategoryUuids() {
+        return categoryRepository.findAllByIsDeletedFalseAndIsActiveTrue(Sort.unsorted())
+                .stream()
+                .filter(categoryAvailability::isEffectivelyActive)
+                .map(Category::getUuid)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 }

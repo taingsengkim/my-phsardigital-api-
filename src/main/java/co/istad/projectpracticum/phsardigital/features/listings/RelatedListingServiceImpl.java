@@ -50,6 +50,7 @@ public class RelatedListingServiceImpl implements RelatedListingService {
     private final ListingRepository listingRepository;
     private final PurchaseRepository purchaseRepository;
     private final ListingVisibility listingVisibility;
+    private final ListingAvailability listingAvailability;
     private final FileUploadService fileUploadService;
 
     @Override
@@ -87,7 +88,9 @@ public class RelatedListingServiceImpl implements RelatedListingService {
             if (picked.size() >= wanted) {
                 return;
             }
-            picked.putIfAbsent(candidate.getUuid(), new Suggestion(candidate, reason));
+            if (listingAvailability.isBuyable(candidate)) {
+                picked.putIfAbsent(candidate.getUuid(), new Suggestion(candidate, reason));
+            }
         }
     }
 

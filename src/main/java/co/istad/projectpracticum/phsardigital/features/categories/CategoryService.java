@@ -11,13 +11,19 @@ import java.util.UUID;
 
 public interface CategoryService {
     /**
-     * Retrieves a paginated list of all categories.
+     * Retrieves a paginated list of effectively active public categories.
      *
      * @param pageNumber the page number to retrieve (zero-based)
      * @param pageSize   the number of categories per page
      * @return a {@link Page} of {@link CategoryResponse} objects
      */
     Page<CategoryResponse> findAll(int pageNumber, int pageSize);
+
+    /**
+     * Administrator catalogue view. Includes active and inactive categories, while
+     * keeping soft-deleted rows out of normal management screens.
+     */
+    Page<CategoryResponse> findAllForAdmin(int pageNumber, int pageSize);
 
     /**
      * Creates a new category.
@@ -42,6 +48,9 @@ public interface CategoryService {
      * @return the matching category as a {@link CategoryResponse}
      */
     CategoryResponse findByUuid(UUID id);
+
+    /** Reads an active or inactive category for administration; deleted rows stay hidden. */
+    CategoryResponse findByUuidForAdmin(UUID id);
 
 
     /**
@@ -71,7 +80,7 @@ public interface CategoryService {
     void softDelete(String slug);
 
     /**
-     * Retrieves the direct child categories of a given parent category.
+     * Retrieves the effectively active direct child categories of a public parent.
      *
      * @param uuid the UUID of the parent category
      * @return a list of child categories as {@link CategoryResponse} objects
@@ -79,8 +88,7 @@ public interface CategoryService {
     List<CategoryResponse> findChildByUuid(UUID uuid);
 
     /**
-     * Builds and retrieves the full category tree, representing the
-     * hierarchical structure of categories and their nested children.
+     * Builds the effectively active public category tree.
      *
      * @return a list of root-level {@link CategoryTreeResponse} objects,
      *         each containing nested child categories

@@ -43,6 +43,11 @@ public class CategoryAttributeOption extends BasedEntity {
     @Column(name = "sort_order", nullable = false)
     private Integer sortOrder = 0;
 
+    /** Protects option label/value edits made concurrently through schema replacement. */
+    @Version
+    @Column(nullable = false, columnDefinition = "bigint default 0")
+    private Long version = 0L;
+
     /** The label if there is one, otherwise the value — never null. */
     public String displayLabel() {
         return label == null || label.isBlank() ? value : label;
