@@ -66,6 +66,14 @@ public class Purchase extends BasedEntity implements Persistable<UUID> {
     @OneToMany(mappedBy = "purchase", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<PurchaseItem> items = new ArrayList<>();
 
+    /**
+     * Landmark shots of the delivery point, copied from the saved address at checkout
+     * on the same terms as {@code shippingAddress}.
+     */
+    @OneToMany(mappedBy = "purchase", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("sortOrder ASC")
+    private List<PurchaseDeliveryPhoto> deliveryPhotos = new ArrayList<>();
+
     @Override
     public UUID getId() {
         return uuid;

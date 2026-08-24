@@ -1,7 +1,10 @@
 package co.istad.projectpracticum.phsardigital.features.purchases;
 
 import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
+import co.istad.projectpracticum.phsardigital.features.address.Address;
+import co.istad.projectpracticum.phsardigital.features.address.AddressPhoto;
 import co.istad.projectpracticum.phsardigital.features.address.AddressService;
+import co.istad.projectpracticum.phsardigital.features.file.FileUpload;
 import co.istad.projectpracticum.phsardigital.features.cart.Cart;
 import co.istad.projectpracticum.phsardigital.features.cart.CartItem;
 import co.istad.projectpracticum.phsardigital.features.cart.CartRepository;
@@ -271,6 +274,38 @@ class PurchaseServiceImplTest {
     }
 
     @Test
+    void checkoutCopiesTheAddressLandmarkPhotosOntoTheOrder() {
+        Cart cart = cartWithOneItem();
+        UUID cartUuid = cart.getUuid();
+        UUID addressId = UUID.randomUUID();
+        when(userProfileRepository.findByIdForCommerceLock("buyer-1"))
+                .thenReturn(Optional.of(buyerProfile()));
+        when(purchaseRepository.findById(cartUuid)).thenReturn(Optional.empty());
+        when(cartRepository.findByBuyerIdAndSellerIdForUpdate("buyer-1", "seller-1"))
+                .thenReturn(Optional.of(cart));
+        when(addressService.requireOwned(addressId, "buyer-1"))
+                .thenReturn(addressWithPhotos(addressId));
+        when(purchaseRepository.save(any(Purchase.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        try (MockedStatic<AuthUtils> auth = mockStatic(AuthUtils.class)) {
+            auth.when(AuthUtils::extractUserId).thenReturn("buyer-1");
+            service().checkout("seller-1",
+                    new CheckoutRequest(cartUuid, addressId, null, null));
+        }
+
+        ArgumentCaptor<Purchase> purchase = ArgumentCaptor.forClass(Purchase.class);
+        verify(purchaseRepository).save(purchase.capture());
+        // Copied, not referenced: editing the address later must not rewrite the order.
+        assertThat(purchase.getValue().getDeliveryPhotos()).hasSize(2);
+        assertThat(purchase.getValue().getDeliveryPhotos())
+                .extracting(PurchaseDeliveryPhoto::getCaption)
+                .containsExactly("turn at the pagoda", "blue gate");
+        assertThat(purchase.getValue().getDeliveryPhotos().getFirst().getPurchase())
+                .isSameAs(purchase.getValue());
+    }
+
+    @Test
     void checkoutRejectsBuyingFromOwnShopBeforeTouchingTheCart() {
         UUID cartUuid = UUID.randomUUID();
 
@@ -473,6 +508,33 @@ class PurchaseServiceImplTest {
         item.setQuantity(1);
         cart.getItems().add(item);
         return cart;
+    }
+
+    private static Address addressWithPhotos(UUID addressId) {
+        Address address = new Address();
+        address.setId(addressId);
+        address.setLine1("St 271");
+        address.setCity("Phnom Penh");
+        address.setRecipient("Dara");
+        address.setPhone("012345678");
+        address.getPhotos().add(photo(address, "road.jpg", "turn at the pagoda", 0));
+        address.getPhotos().add(photo(address, "gate.jpg", "blue gate", 1));
+        return address;
+    }
+
+    private static AddressPhoto photo(Address address, String objectName,
+                                      String caption, int sortOrder) {
+        FileUpload file = new FileUpload();
+        file.setId(UUID.randomUUID());
+        file.setObjectName(objectName);
+
+        AddressPhoto photo = new AddressPhoto();
+        photo.setUuid(UUID.randomUUID());
+        photo.setAddress(address);
+        photo.setFile(file);
+        photo.setCaption(caption);
+        photo.setSortOrder(sortOrder);
+        return photo;
     }
 
     private static UserProfile buyerProfile() {

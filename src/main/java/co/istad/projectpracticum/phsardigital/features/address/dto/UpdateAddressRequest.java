@@ -1,10 +1,12 @@
 package co.istad.projectpracticum.phsardigital.features.address.dto;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * Every field is optional: this backs a PATCH, so an absent field means "leave it
@@ -50,6 +52,15 @@ public record UpdateAddressRequest(
          * would leave the account with addresses but nothing for checkout to pick, so
          * moving the default means sending {@code true} on the one that should have it.
          */
-        Boolean isDefault
+        Boolean isDefault,
+
+        /**
+         * Replaces the whole set of landmark photos when present, because a PATCH that
+         * could only ever add would leave no way to remove one. Absent means unchanged;
+         * an empty list clears them.
+         */
+        @Valid
+        @Size(max = 3, message = "An address may keep at most 3 landmark photos")
+        List<AddressPhotoRequest> landmarkPhotos
 ) {
 }

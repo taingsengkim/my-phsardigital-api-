@@ -8,6 +8,8 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -54,4 +56,12 @@ public class Address extends BasedEntity {
 
     @Column(name = "is_default")
     private Boolean isDefault = false;
+
+    /**
+     * Landmark shots for the courier. Ordered so the buyer's sequence survives a
+     * reload — normally the road in first, the door last.
+     */
+    @OneToMany(mappedBy = "address", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("sortOrder ASC")
+    private List<AddressPhoto> photos = new ArrayList<>();
 }

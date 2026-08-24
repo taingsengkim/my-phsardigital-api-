@@ -23,6 +23,7 @@ public record PurchaseResponse(
         Double totalPrice,
         PurchaseStatus status,
         String shippingAddress,
+        List<DeliveryPhotoResponse> deliveryPhotos,
         String note,
         List<PurchaseItemResponse> items,
         LocalDateTime createdAt

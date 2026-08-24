@@ -28,4 +28,7 @@ public interface AddressRepository extends JpaRepository<Address, UUID> {
     @Query("UPDATE Address a SET a.isDefault = false "
             + "WHERE a.userProfile.id = :userId AND a.id <> :keepId AND a.isDefault = true")
     void clearOtherDefaults(@Param("userId") String userId, @Param("keepId") UUID keepId);
+
+    /** Backs the landmark-photo detach in {@code AddressFileListener}. */
+    List<Address> findAllByPhotos_File_ObjectName(String objectName);
 }

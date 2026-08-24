@@ -1,5 +1,7 @@
 package co.istad.projectpracticum.phsardigital.features.purchases;
 
+import co.istad.projectpracticum.phsardigital.features.file.FileUploadService;
+import co.istad.projectpracticum.phsardigital.features.purchases.dto.DeliveryPhotoResponse;
 import co.istad.projectpracticum.phsardigital.features.purchases.dto.PurchaseItemResponse;
 import co.istad.projectpracticum.phsardigital.features.purchases.dto.PurchaseResponse;
 import co.istad.projectpracticum.phsardigital.features.user.UserProfile;
@@ -14,6 +16,7 @@ import java.util.List;
 public class PurchaseMapper {
 
     private final UserProfileRepository userProfileRepository;
+    private final FileUploadService fileUploadService;
 
     public PurchaseResponse toResponse(Purchase p) {
         List<PurchaseItemResponse> items = p.getItems().stream()
@@ -44,10 +47,20 @@ public class PurchaseMapper {
                 p.getTotalPrice(),
                 p.getStatus(),
                 p.getShippingAddress(),
+                toDeliveryPhotos(p),
                 p.getNote(),
                 items,
                 p.getCreatedAt()
         );
+    }
+
+    /** The landmark shots the buyer saved, so the courier gets the door, not just the line. */
+    private List<DeliveryPhotoResponse> toDeliveryPhotos(Purchase p) {
+        return p.getDeliveryPhotos().stream()
+                .map(photo -> new DeliveryPhotoResponse(
+                        fileUploadService.getPreviewUrl(photo.getFile()),
+                        photo.getCaption()))
+                .toList();
     }
 
     private PurchaseItemResponse toItemResponse(PurchaseItem it) {

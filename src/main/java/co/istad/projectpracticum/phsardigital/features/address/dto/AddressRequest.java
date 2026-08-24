@@ -1,16 +1,22 @@
 package co.istad.projectpracticum.phsardigital.features.address.dto;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /**
- * @param recipient who receives the delivery, when that is not the account holder
- * @param isDefault when true, the address this user's next checkout picks by default;
- *                  the first address a user saves becomes their default regardless
+ * @param recipient      who receives the delivery, when that is not the account holder
+ * @param isDefault      when true, the address this user's next checkout picks by
+ *                       default; the first address a user saves becomes their default
+ *                       regardless
+ * @param landmarkPhotos optional shots of the place for the courier, already uploaded
+ *                       through the image endpoint. Capped at three: past that they
+ *                       stop being landmarks and start being an album
  */
 public record AddressRequest(
         @Size(max = 50, message = "Label must not exceed 50 characters")
@@ -43,6 +49,10 @@ public record AddressRequest(
         @DecimalMax(value = "180.0", message = "Longitude must be between -180 and 180")
         BigDecimal longitude,
 
-        Boolean isDefault
+        Boolean isDefault,
+
+        @Valid
+        @Size(max = 3, message = "An address may keep at most 3 landmark photos")
+        List<AddressPhotoRequest> landmarkPhotos
 ) {
 }

@@ -22,6 +22,9 @@ public interface PurchaseRepository extends JpaRepository<Purchase, UUID> {
     @Query("SELECT p FROM Purchase p WHERE p.uuid = :uuid")
     Optional<Purchase> findByUuidForUpdate(@Param("uuid") UUID uuid);
 
+    /** Backs the delivery-photo detach in {@code PurchaseFileListener}. */
+    List<Purchase> findAllByDeliveryPhotos_File_ObjectName(String objectName);
+
     Page<Purchase> findByBuyerId(String buyerId, Pageable pageable);
 
     Optional<Purchase> findByUuidAndBuyerId(UUID uuid, String buyerId);

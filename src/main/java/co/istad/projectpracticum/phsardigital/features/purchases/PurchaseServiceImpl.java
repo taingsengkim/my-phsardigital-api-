@@ -2,6 +2,7 @@ package co.istad.projectpracticum.phsardigital.features.purchases;
 
 import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
 import co.istad.projectpracticum.phsardigital.features.address.Address;
+import co.istad.projectpracticum.phsardigital.features.address.AddressPhoto;
 import co.istad.projectpracticum.phsardigital.features.address.AddressService;
 import co.istad.projectpracticum.phsardigital.features.cart.Cart;
 import co.istad.projectpracticum.phsardigital.features.cart.CartItem;
@@ -327,6 +328,7 @@ public class PurchaseServiceImpl implements PurchaseService {
             purchase.setShippingAddress(addressText);
             savedRecipient = address.getRecipient();
             savedPhone = address.getPhone();
+            copyLandmarkPhotos(purchase, address);
         } else {
             purchase.setShippingAddress(request.shippingAddress().trim());
         }
@@ -342,6 +344,23 @@ public class PurchaseServiceImpl implements PurchaseService {
         }
         purchase.setRecipientName(recipient);
         purchase.setRecipientPhone(phone);
+    }
+
+    /**
+     * Copies the address's landmark shots onto the order, for the same reason the
+     * address text is copied: the buyer may edit or delete the saved address, and what
+     * the seller was shown when the order arrived must not change underneath them.
+     */
+    private void copyLandmarkPhotos(Purchase purchase, Address address) {
+        purchase.getDeliveryPhotos().clear();
+        for (AddressPhoto source : address.getPhotos()) {
+            PurchaseDeliveryPhoto photo = new PurchaseDeliveryPhoto();
+            photo.setPurchase(purchase);
+            photo.setFile(source.getFile());
+            photo.setCaption(source.getCaption());
+            photo.setSortOrder(source.getSortOrder());
+            purchase.getDeliveryPhotos().add(photo);
+        }
     }
 
     private void validateDeliveryChoice(CheckoutRequest request) {

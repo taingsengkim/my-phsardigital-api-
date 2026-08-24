@@ -1,6 +1,7 @@
 package co.istad.projectpracticum.phsardigital.features.address.dto;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 
 public record AddressResponse(
@@ -14,6 +15,7 @@ public record AddressResponse(
         String province,
         BigDecimal latitude,
         BigDecimal longitude,
-        Boolean isDefault
+        Boolean isDefault,
+        List<AddressPhotoResponse> landmarkPhotos
 ) {
 }

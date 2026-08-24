@@ -1,9 +1,13 @@
 package co.istad.projectpracticum.phsardigital.features.address;
 
 import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
+import co.istad.projectpracticum.phsardigital.features.address.dto.AddressPhotoRequest;
+import co.istad.projectpracticum.phsardigital.features.address.dto.AddressPhotoResponse;
 import co.istad.projectpracticum.phsardigital.features.address.dto.AddressRequest;
 import co.istad.projectpracticum.phsardigital.features.address.dto.AddressResponse;
 import co.istad.projectpracticum.phsardigital.features.address.dto.UpdateAddressRequest;
+import co.istad.projectpracticum.phsardigital.features.file.FileUpload;
+import co.istad.projectpracticum.phsardigital.features.file.FileUploadService;
 import co.istad.projectpracticum.phsardigital.features.user.UserProfile;
 import co.istad.projectpracticum.phsardigital.features.user.UserProfileRepository;
 import lombok.RequiredArgsConstructor;
@@ -12,8 +16,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -21,6 +31,7 @@ public class AddressServiceImpl implements AddressService {
 
     private final AddressRepository addressRepository;
     private final UserProfileRepository userProfileRepository;
+    private final FileUploadService fileUploadService;
 
     @Override
     @Transactional(readOnly = true)
@@ -50,6 +61,7 @@ public class AddressServiceImpl implements AddressService {
         address.setProvince(request.province());
         address.setLatitude(request.latitude());
         address.setLongitude(request.longitude());
+        replacePhotos(address, request.landmarkPhotos(), userId);
 
         // The first address saved becomes the default whatever the request says, so a
         // user who never thinks about it still has one for checkout to pick.
@@ -95,6 +107,11 @@ public class AddressServiceImpl implements AddressService {
         }
         if (request.longitude() != null) {
             address.setLongitude(request.longitude());
+        }
+        // Absent leaves the photos alone; present replaces the set, so a PATCH is also
+        // how one gets removed.
+        if (request.landmarkPhotos() != null) {
+            replacePhotos(address, request.landmarkPhotos(), userId);
         }
 
         // Only a promotion, never a demotion — see UpdateAddressRequest.isDefault.
@@ -159,6 +176,54 @@ public class AddressServiceImpl implements AddressService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Address not found"));
     }
 
+    /**
+     * Points the address at exactly the photos named, in the order given.
+     *
+     * <p>Every object name is resolved against this caller in one query before
+     * anything is attached, so a name belonging to somebody else fails the request
+     * outright rather than half-applying it. The existing rows are cleared and rebuilt
+     * rather than diffed: at three photos the comparison would cost more than the
+     * writes it saves, and orphan removal takes care of what drops out.
+     */
+    private void replacePhotos(Address address, List<AddressPhotoRequest> requested, String ownerId) {
+        address.getPhotos().clear();
+        if (requested == null || requested.isEmpty()) {
+            return;
+        }
+
+        // Deduplicated, because the same shot sent twice is one landmark, not two.
+        Set<String> objectNames = requested.stream()
+                .map(AddressPhotoRequest::objectName)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Map<String, FileUpload> owned = fileUploadService
+                .requireOwnedFiles(objectNames, ownerId)
+                .stream()
+                .collect(Collectors.toMap(FileUpload::getObjectName, Function.identity(), (a, b) -> a));
+
+        List<AddressPhoto> rebuilt = new ArrayList<>();
+        int sortOrder = 0;
+        for (String objectName : objectNames) {
+            AddressPhoto photo = new AddressPhoto();
+            photo.setAddress(address);
+            photo.setFile(owned.get(objectName));
+            photo.setCaption(captionFor(requested, objectName));
+            photo.setSortOrder(sortOrder++);
+            rebuilt.add(photo);
+        }
+        address.getPhotos().addAll(rebuilt);
+    }
+
+    /** The first caption sent for this object name, matching the deduplication above. */
+    private static String captionFor(List<AddressPhotoRequest> requested, String objectName) {
+        return requested.stream()
+                .filter(photo -> objectName.equals(photo.objectName()))
+                .map(AddressPhotoRequest::caption)
+                .filter(caption -> caption != null && !caption.isBlank())
+                .map(String::trim)
+                .findFirst()
+                .orElse(null);
+    }
+
     private AddressResponse toResponse(Address address) {
         return new AddressResponse(
                 address.getId(),
@@ -171,6 +236,15 @@ public class AddressServiceImpl implements AddressService {
                 address.getProvince(),
                 address.getLatitude(),
                 address.getLongitude(),
-                address.getIsDefault());
+                address.getIsDefault(),
+                toPhotoResponses(address));
+    }
+
+    private List<AddressPhotoResponse> toPhotoResponses(Address address) {
+        return address.getPhotos().stream()
+                .map(photo -> new AddressPhotoResponse(
+                        fileUploadService.getPreviewUrl(photo.getFile()),
+                        photo.getCaption()))
+                .toList();
     }
 }
