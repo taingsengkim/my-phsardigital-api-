@@ -1,5 +1,6 @@
 package co.istad.projectpracticum.phsardigital.features.listings.dto;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
@@ -22,14 +23,14 @@ public record ListingFilter(
         String categorySlug,
         String search,
         String sellerId,
-        Double minPrice,
-        Double maxPrice,
+        BigDecimal minPrice,
+        BigDecimal maxPrice,
         List<AttributeFilter> attributes
 ) {
 
     /** The filter as it was before facets existed, for callers that do not use them. */
     public ListingFilter(UUID categoryUuid, String categorySlug, String search,
-                         String sellerId, Double minPrice, Double maxPrice) {
+                         String sellerId, BigDecimal minPrice, BigDecimal maxPrice) {
         this(categoryUuid, categorySlug, search, sellerId, minPrice, maxPrice, List.of());
     }
 

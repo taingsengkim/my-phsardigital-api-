@@ -1,5 +1,6 @@
 package co.istad.projectpracticum.phsardigital.features.listings;
 
+import java.math.BigDecimal;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.AttributeFilter;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingCreateRequest;
 import co.istad.projectpracticum.phsardigital.features.listings.dto.ListingFilter;
@@ -53,8 +54,8 @@ public class ListingController {
                                         @RequestParam(required = false) String categorySlug,
                                         @RequestParam(required = false) String search,
                                         @RequestParam(required = false) String sellerId,
-                                        @RequestParam(required = false) Double minPrice,
-                                        @RequestParam(required = false) Double maxPrice,
+                                        @RequestParam(required = false) BigDecimal minPrice,
+                                        @RequestParam(required = false) BigDecimal maxPrice,
                                         @RequestParam(required = false) List<String> attr,
                                         @RequestParam(required = false) String sort,
                                         @RequestParam(defaultValue = "0")

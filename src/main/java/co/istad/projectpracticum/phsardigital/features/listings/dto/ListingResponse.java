@@ -1,5 +1,6 @@
 package co.istad.projectpracticum.phsardigital.features.listings.dto;
 
+import java.math.BigDecimal;
 import co.istad.projectpracticum.phsardigital.features.categories.dto.CategorySummaryResponse;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_attributes.dto.ListingAttributeResponse;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_attributes.dto.ListingSpecificationGroupResponse;
@@ -29,8 +30,8 @@ public record ListingResponse(
         String title,
         String slug,
         String description,
-        Double fullPrice,
-        Double discountPrice,
+        BigDecimal fullPrice,
+        BigDecimal discountPrice,
         Integer stockQty,
         ListingStatus status,
         Boolean isFeatured,

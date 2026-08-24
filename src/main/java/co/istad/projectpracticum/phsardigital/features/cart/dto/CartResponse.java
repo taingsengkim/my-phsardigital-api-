@@ -1,5 +1,6 @@
 package co.istad.projectpracticum.phsardigital.features.cart.dto;
 
+import java.math.BigDecimal;
 import co.istad.projectpracticum.phsardigital.features.seller.dto.SellerProfileSummaryResponse;
 
 import java.util.List;
@@ -17,6 +18,6 @@ public record CartResponse(
         UUID uuid,
         SellerProfileSummaryResponse sellerProfile,
         List<CartItemResponse> items,
-        Double totalPrice
+        BigDecimal totalPrice
 ) {
 }

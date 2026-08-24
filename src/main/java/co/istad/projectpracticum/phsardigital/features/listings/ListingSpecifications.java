@@ -1,5 +1,6 @@
 package co.istad.projectpracticum.phsardigital.features.listings;
 
+import java.math.BigDecimal;
 import co.istad.projectpracticum.phsardigital.features.categories.category_attributes.AttributeDataType;
 import co.istad.projectpracticum.phsardigital.features.categories.category_attributes.CategoryAttribute;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_attributes.ListingAttribute;
@@ -79,17 +80,17 @@ final class ListingSpecifications {
      * undiscounted listings in the results at all — {@code null >= 5} is unknown, not
      * false.
      */
-    static Specification<Listing> pricedAtLeast(Double minPrice) {
+    static Specification<Listing> pricedAtLeast(BigDecimal minPrice) {
         return (root, query, builder) ->
                 builder.greaterThanOrEqualTo(effectivePrice(root, builder), minPrice);
     }
 
-    static Specification<Listing> pricedAtMost(Double maxPrice) {
+    static Specification<Listing> pricedAtMost(BigDecimal maxPrice) {
         return (root, query, builder) ->
                 builder.lessThanOrEqualTo(effectivePrice(root, builder), maxPrice);
     }
 
-    private static Expression<Double> effectivePrice(Root<Listing> root, CriteriaBuilder builder) {
+    private static Expression<BigDecimal> effectivePrice(Root<Listing> root, CriteriaBuilder builder) {
         return builder.coalesce(root.get("discountPrice"), root.get("fullPrice"));
     }
 

@@ -1,5 +1,6 @@
 package co.istad.projectpracticum.phsardigital.features.purchases;
 
+import co.istad.projectpracticum.phsardigital.core.money.Money;
 import co.istad.projectpracticum.phsardigital.features.file.FileUploadService;
 import co.istad.projectpracticum.phsardigital.features.purchases.dto.DeliveryPhotoResponse;
 import co.istad.projectpracticum.phsardigital.features.purchases.dto.PurchaseItemResponse;
@@ -27,7 +28,9 @@ public class PurchaseMapper {
         // One per order: a page of orders costs a query per distinct buyer, which is
         // worth revisiting if order history ever gets long, but repeated buyers on the
         // same page are served from the persistence context.
-        UserProfile buyer = userProfileRepository.findById(p.getBuyerId()).orElse(null);
+        UserProfile buyer = p.getBuyerId() == null
+                ? null
+                : userProfileRepository.findById(p.getBuyerId()).orElse(null);
 
         // The recipient copied off the delivery address wins over the account holder:
         // people order to a parent's or a colleague's address, and it is the recipient
@@ -46,6 +49,7 @@ public class PurchaseMapper {
                 p.getSellerProfile().getBusinessName(),
                 p.getTotalPrice(),
                 p.getStatus(),
+                p.getChannel(),
                 p.getShippingAddress(),
                 toDeliveryPhotos(p),
                 p.getNote(),
@@ -70,7 +74,7 @@ public class PurchaseMapper {
                 it.getQuantity(),
                 it.getUnitFullPrice(),
                 it.getUnitPrice(),
-                it.getUnitPrice() * it.getQuantity()
+                Money.multiply(it.getUnitPrice(), it.getQuantity())
         );
     }
 }

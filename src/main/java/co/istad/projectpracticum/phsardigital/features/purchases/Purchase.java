@@ -8,6 +8,7 @@ import lombok.Getter;
 import lombok.Setter;
 import org.springframework.data.domain.Persistable;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -31,16 +32,21 @@ public class Purchase extends BasedEntity implements Persistable<UUID> {
     @Setter(AccessLevel.NONE)
     private boolean newEntity = true;
 
-    @Column(name = "buyer_id", nullable = false)
+    /** Null on a counter sale: a walk-in customer has no account. */
+    @Column(name = "buyer_id")
     private String buyerId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private PurchaseChannel channel = PurchaseChannel.ONLINE;
 
     // one order == one shop
     @ManyToOne
     @JoinColumn(name = "seller_profile_id", nullable = false)
     private SellerProfile sellerProfile;
 
-    @Column(nullable = false)
-    private Double totalPrice;
+    @Column(nullable = false, precision = 12, scale = 2)
+    private BigDecimal totalPrice;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)

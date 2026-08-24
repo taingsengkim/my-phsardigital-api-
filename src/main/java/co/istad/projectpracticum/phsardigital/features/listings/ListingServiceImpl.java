@@ -1,5 +1,6 @@
 package co.istad.projectpracticum.phsardigital.features.listings;
 
+import java.math.BigDecimal;
 import co.istad.projectpracticum.phsardigital.config.config.Utils;
 import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
 import co.istad.projectpracticum.phsardigital.features.categories.Category;
@@ -18,6 +19,9 @@ import co.istad.projectpracticum.phsardigital.features.listings.listing_images.d
 import co.istad.projectpracticum.phsardigital.features.listings.listing_images.dto.ListingImageRequest;
 import co.istad.projectpracticum.phsardigital.features.seller.SellerAccessGuard;
 import co.istad.projectpracticum.phsardigital.features.seller.SellerProfile;
+import co.istad.projectpracticum.phsardigital.features.stock.StockChannel;
+import co.istad.projectpracticum.phsardigital.features.stock.StockLedger;
+import co.istad.projectpracticum.phsardigital.features.stock.StockMovementReason;
 import co.istad.projectpracticum.phsardigital.features.subscription.SubscriptionService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
@@ -50,6 +54,7 @@ public class ListingServiceImpl implements ListingService{
     private final ListingAttributeWriter listingAttributeWriter;
     private final CategoryAvailability categoryAvailability;
     private final ListingFacetValidator listingFacetValidator;
+    private final StockLedger stockLedger;
 
     /**
      * The moderation view: every seller's listings in one status.
@@ -276,6 +281,12 @@ public class ListingServiceImpl implements ListingService{
         attachImages(listing, request.images(), imageFiles);
 
         Listing saved = listingRepository.save(listing);
+        // Opening balance, so the ledger explains the whole of stock_qty rather than
+        // everything after the first sale.
+        if (saved.getStockQty() != null && saved.getStockQty() > 0) {
+            stockLedger.record(saved, saved.getStockQty(), StockMovementReason.INITIAL,
+                    StockChannel.MANUAL, null, null);
+        }
         return listingResponseFactory.one(saved);
     }
 
@@ -306,16 +317,25 @@ public class ListingServiceImpl implements ListingService{
         // Checked against the state the listing ends up in, so dropping the list price
         // under a discount that was already there is caught too.
         if (request.fullPrice() != null || request.discountPrice() != null) {
-            Double fullPrice = request.fullPrice() != null ? request.fullPrice() : listing.getFullPrice();
-            Double discountPrice = request.discountPrice() != null
+            BigDecimal fullPrice = request.fullPrice() != null ? request.fullPrice() : listing.getFullPrice();
+            BigDecimal discountPrice = request.discountPrice() != null
                     ? request.discountPrice()
                     : listing.getDiscountPrice();
             requireDiscountBelowList(fullPrice, discountPrice);
             listing.setFullPrice(fullPrice);
             listing.setDiscountPrice(discountPrice);
         }
+        // A count sent here is the seller's belief about the shelf, so it is applied as
+        // the difference from what we hold rather than written over the top. Anything
+        // that sold between loading the form and saving it therefore survives.
         if (request.stockQty() != null) {
-            listing.setStockQty(request.stockQty());
+            int current = listing.getStockQty() == null ? 0 : listing.getStockQty();
+            int delta = request.stockQty() - current;
+            if (delta != 0) {
+                stockLedger.apply(listing, delta,
+                        delta > 0 ? StockMovementReason.RESTOCK : StockMovementReason.ADJUST,
+                        StockChannel.MANUAL, null, "Set to " + request.stockQty() + " by the seller");
+            }
         }
         if (request.status() != null) {
             if (request.status() == ListingStatus.SUSPENDED) {
@@ -477,8 +497,8 @@ public class ListingServiceImpl implements ListingService{
         fileUploadService.deleteQuietly(removedFile);
     }
     /** A discount at or above the list price advertises a saving that is not one. */
-    private void requireDiscountBelowList(Double fullPrice, Double discountPrice) {
-        if (discountPrice != null && fullPrice != null && discountPrice >= fullPrice) {
+    private void requireDiscountBelowList(BigDecimal fullPrice, BigDecimal discountPrice) {
+        if (discountPrice != null && fullPrice != null && discountPrice.compareTo(fullPrice) >= 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "The discount price (" + discountPrice + ") must be below the full price ("
                             + fullPrice + "). To end the sale, use DELETE /api/v1/listings/"

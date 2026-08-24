@@ -1,5 +1,6 @@
 package co.istad.projectpracticum.phsardigital.features.listings.dto;
 
+import java.math.BigDecimal;
 import co.istad.projectpracticum.phsardigital.features.categories.dto.CategorySummaryResponse;
 import co.istad.projectpracticum.phsardigital.features.listings.RelatedReason;
 
@@ -16,8 +17,8 @@ public record RelatedListingResponse(
         UUID uuid,
         String title,
         String slug,
-        Double fullPrice,
-        Double discountPrice,
+        BigDecimal fullPrice,
+        BigDecimal discountPrice,
         Integer stockQty,
         Integer sold,
         String thumbnailUri,

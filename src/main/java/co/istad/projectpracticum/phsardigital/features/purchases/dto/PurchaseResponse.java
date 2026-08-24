@@ -1,5 +1,7 @@
 package co.istad.projectpracticum.phsardigital.features.purchases.dto;
 
+import java.math.BigDecimal;
+import co.istad.projectpracticum.phsardigital.features.purchases.PurchaseChannel;
 import co.istad.projectpracticum.phsardigital.features.purchases.PurchaseStatus;
 
 import java.time.LocalDateTime;
@@ -20,8 +22,9 @@ public record PurchaseResponse(
         String buyerPhone,
         String sellerId,
         String businessName,
-        Double totalPrice,
+        BigDecimal totalPrice,
         PurchaseStatus status,
+        PurchaseChannel channel,
         String shippingAddress,
         List<DeliveryPhotoResponse> deliveryPhotos,
         String note,

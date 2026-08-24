@@ -1,5 +1,6 @@
 package co.istad.projectpracticum.phsardigital.features.listings.dto;
 
+import java.math.BigDecimal;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_attributes.ListingAttribute;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_attributes.dto.ListingAttributeCreateRequest;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_images.dto.ListingImageRequest;
@@ -27,10 +28,10 @@ public record ListingCreateRequest(
         @JsonAlias("price")
         @NotNull(message = "Price must not be null")
         @DecimalMin(value = "0.0", inclusive = true, message = "Price must not be negative")
-        Double fullPrice,
+        BigDecimal fullPrice,
 
         @DecimalMin(value = "0.0", inclusive = true, message = "Discount price must not be negative")
-        Double discountPrice,
+        BigDecimal discountPrice,
 
         @NotNull(message = "Stock quantity must not be null")
         @PositiveOrZero(message = "Stock quantity must not be negative")

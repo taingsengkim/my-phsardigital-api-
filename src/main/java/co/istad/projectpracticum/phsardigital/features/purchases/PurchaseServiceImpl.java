@@ -1,6 +1,7 @@
 package co.istad.projectpracticum.phsardigital.features.purchases;
 
 import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
+import co.istad.projectpracticum.phsardigital.core.money.Money;
 import co.istad.projectpracticum.phsardigital.features.address.Address;
 import co.istad.projectpracticum.phsardigital.features.address.AddressPhoto;
 import co.istad.projectpracticum.phsardigital.features.address.AddressService;
@@ -13,6 +14,9 @@ import co.istad.projectpracticum.phsardigital.features.listings.ListingRepositor
 import co.istad.projectpracticum.phsardigital.features.listings.ListingStatus;
 import co.istad.projectpracticum.phsardigital.features.purchases.dto.*;
 import co.istad.projectpracticum.phsardigital.features.seller.SellerAccessGuard;
+import co.istad.projectpracticum.phsardigital.features.stock.StockChannel;
+import co.istad.projectpracticum.phsardigital.features.stock.StockLedger;
+import co.istad.projectpracticum.phsardigital.features.stock.StockMovementReason;
 import co.istad.projectpracticum.phsardigital.features.user.UserProfile;
 import co.istad.projectpracticum.phsardigital.features.user.UserProfileRepository;
 import jakarta.persistence.EntityManager;
@@ -26,6 +30,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
@@ -46,6 +51,7 @@ public class PurchaseServiceImpl implements PurchaseService {
     private final ListingAvailability listingAvailability;
     private final UserProfileRepository userProfileRepository;
     private final EntityManager entityManager;
+    private final StockLedger stockLedger;
 
     @Override
     @Transactional
@@ -104,11 +110,12 @@ public class PurchaseServiceImpl implements PurchaseService {
         purchase.setUuid(cartUuid);
         purchase.setBuyerId(buyerId);
         purchase.setSellerProfile(cart.getSellerProfile());
+        purchase.setChannel(PurchaseChannel.ONLINE);
         purchase.setStatus(PurchaseStatus.PENDING);
         applyDelivery(purchase, request, buyerId, buyer);
         purchase.setNote(trimToNull(request.note()));
 
-        double total = 0.0;
+        BigDecimal total = Money.ZERO;
         for (CartItem cartItem : cart.getItems()) {
             Listing listing = cartItem.getListing();
 
@@ -122,17 +129,17 @@ public class PurchaseServiceImpl implements PurchaseService {
 
             // Both are snapshotted: the sale can end tomorrow, and the order has to keep
             // saying what was charged and what it would have cost.
-            double unitPrice = listing.effectivePrice();
+            BigDecimal unitPrice = listing.effectivePrice();
 
             PurchaseItem item = new PurchaseItem();
             item.setPurchase(purchase);
             item.setListing(listing);
             item.setQuantity(cartItem.getQuantity());
-            item.setUnitPrice(unitPrice);
-            item.setUnitFullPrice(listing.getFullPrice());
+            item.setUnitPrice(Money.of(unitPrice));
+            item.setUnitFullPrice(Money.of(listing.getFullPrice()));
             purchase.getItems().add(item);
 
-            total += unitPrice * cartItem.getQuantity();
+            total = Money.add(total, Money.multiply(unitPrice, cartItem.getQuantity()));
         }
 
         purchase.setTotalPrice(total);
@@ -176,19 +183,8 @@ public class PurchaseServiceImpl implements PurchaseService {
             // after checkout (moderation, category deactivation, seller suspension or
             // another order consuming the remaining stock).
             listingAvailability.requireBuyable(listing);
-            if (listing.getStockQty() < item.getQuantity()) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT,
-                        "Not enough stock to confirm: " + listing.getTitle());
-            }
-            listing.setStockQty(listing.getStockQty() - item.getQuantity());
-            listing.setSold(listing.getSold() + item.getQuantity());
-            // Stock depletion refines the currently sellable state to SOLD_OUT. Keep
-            // the status guard as defense in depth: inventory accounting must never
-            // overwrite a stronger moderation/lifecycle state.
-            if (listing.getStockQty() == 0
-                    && listing.getStatus() == ListingStatus.ACTIVE) {
-                listing.setStatus(ListingStatus.SOLD_OUT);
-            }
+            stockLedger.apply(listing, -item.getQuantity(), StockMovementReason.SALE,
+                    StockChannel.ONLINE, purchase.getUuid(), null);
             listingRepository.save(listing);
         }
 
@@ -241,23 +237,8 @@ public class PurchaseServiceImpl implements PurchaseService {
         if (purchase.getStatus() == PurchaseStatus.CONFIRMED) {
             for (PurchaseItem item : lockOrdered(purchase)) {
                 Listing listing = lockListing(item);
-                if (listing.getSold() == null || listing.getSold() < item.getQuantity()) {
-                    throw new ResponseStatusException(HttpStatus.CONFLICT,
-                            "Cannot cancel because the inventory history is inconsistent for: "
-                                    + listing.getTitle());
-                }
-                try {
-                    listing.setStockQty(Math.addExact(
-                            listing.getStockQty(), item.getQuantity()));
-                } catch (ArithmeticException exception) {
-                    throw new ResponseStatusException(HttpStatus.CONFLICT,
-                            "Cannot restore stock because its quantity would overflow for: "
-                                    + listing.getTitle(), exception);
-                }
-                listing.setSold(listing.getSold() - item.getQuantity());
-                if (listing.getStatus() == ListingStatus.SOLD_OUT && listing.getStockQty() > 0) {
-                    listing.setStatus(ListingStatus.ACTIVE);
-                }
+                stockLedger.apply(listing, item.getQuantity(), StockMovementReason.CANCEL,
+                        StockChannel.ONLINE, purchase.getUuid(), null);
                 listingRepository.save(listing);
             }
         }

@@ -13,6 +13,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.repository.query.Param;
 
+import java.math.BigDecimal;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -163,7 +164,7 @@ public interface ListingRepository extends JpaRepository<Listing, UUID>, JpaSpec
             + "ORDER BY ABS(COALESCE(l.discountPrice, l.fullPrice) - :price), l.sold DESC")
     List<Listing> findCategoryPeers(@Param("category") Category category,
                                     @Param("excludeUuid") UUID excludeUuid,
-                                    @Param("price") Double price,
+                                    @Param("price") BigDecimal price,
                                     @Param("status") ListingStatus status,
                                     Pageable pageable);
 

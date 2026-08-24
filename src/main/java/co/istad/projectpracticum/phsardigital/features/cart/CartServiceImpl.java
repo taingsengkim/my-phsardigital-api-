@@ -1,6 +1,7 @@
 package co.istad.projectpracticum.phsardigital.features.cart;
 
 import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
+import co.istad.projectpracticum.phsardigital.core.money.Money;
 import co.istad.projectpracticum.phsardigital.features.cart.dto.*;
 import co.istad.projectpracticum.phsardigital.features.file.FileUploadService;
 import co.istad.projectpracticum.phsardigital.features.listings.Listing;
@@ -15,6 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -142,7 +144,7 @@ public class CartServiceImpl implements CartService {
         // Removing the last item deletes the cart, so a retried removal finds nothing.
         // That is the same outcome the caller asked for, not a 404.
         if (found.isEmpty()) {
-            return new CartResponse(null, null, new ArrayList<>(), 0.0);
+            return new CartResponse(null, null, new ArrayList<>(), Money.ZERO);
         }
         Cart cart = found.get();
         cart.getItems().removeIf(i -> i.getUuid().equals(itemUuid));
@@ -166,7 +168,7 @@ public class CartServiceImpl implements CartService {
             if (cart.getUuid() != null) {
                 cartRepository.delete(cart);
             }
-            return new CartResponse(null, shop, new ArrayList<>(), 0.0);
+            return new CartResponse(null, shop, new ArrayList<>(), Money.ZERO);
         }
         return toResponse(cartRepository.save(cart));
     }
@@ -205,13 +207,13 @@ public class CartServiceImpl implements CartService {
 
     private CartResponse toResponse(Cart cart) {
         List<CartItemResponse> items = new ArrayList<>();
-        double total = 0.0;
+        BigDecimal total = Money.ZERO;
         for (CartItem it : cart.getItems()) {
             Listing listing = it.getListing();
             // The basket has to total what checkout will charge.
-            double unitPrice = listing.effectivePrice();
-            double line = unitPrice * it.getQuantity();
-            total += line;
+            BigDecimal unitPrice = listing.effectivePrice();
+            BigDecimal line = Money.multiply(unitPrice, it.getQuantity());
+            total = Money.add(total, line);
             items.add(new CartItemResponse(
                     it.getUuid(),
                     listing.getUuid(),

@@ -15,6 +15,9 @@ import co.istad.projectpracticum.phsardigital.features.listings.ListingStatus;
 import co.istad.projectpracticum.phsardigital.features.purchases.dto.CheckoutRequest;
 import co.istad.projectpracticum.phsardigital.features.seller.SellerAccessGuard;
 import co.istad.projectpracticum.phsardigital.features.seller.SellerProfile;
+import co.istad.projectpracticum.phsardigital.features.stock.StockChannel;
+import co.istad.projectpracticum.phsardigital.features.stock.StockLedger;
+import co.istad.projectpracticum.phsardigital.features.stock.StockMovementReason;
 import co.istad.projectpracticum.phsardigital.features.user.UserProfile;
 import co.istad.projectpracticum.phsardigital.features.user.UserProfileRepository;
 import jakarta.persistence.EntityManager;
@@ -30,6 +33,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -65,6 +69,8 @@ class PurchaseServiceImplTest {
     private UserProfileRepository userProfileRepository;
     @Mock
     private EntityManager entityManager;
+    @Mock
+    private StockLedger stockLedger;
 
     @Test
     void confirmationRefusesASuspendedListingWithoutChangingInventory() {
@@ -93,7 +99,7 @@ class PurchaseServiceImplTest {
     }
 
     @Test
-    void confirmationStillMarksAnActiveListingSoldOutWhenStockReachesZero() {
+    void confirmationTakesTheOrderedQuantityThroughTheStockLedger() {
         UUID purchaseUuid = UUID.randomUUID();
         Listing listing = listing(ListingStatus.ACTIVE);
         Purchase purchase = pendingPurchase(purchaseUuid, listing);
@@ -104,8 +110,11 @@ class PurchaseServiceImplTest {
             service().confirm(purchaseUuid);
         }
 
-        assertThat(listing.getStatus()).isEqualTo(ListingStatus.SOLD_OUT);
-        assertThat(listing.getStockQty()).isZero();
+        // The arithmetic and the SOLD_OUT transition belong to StockLedger and are
+        // covered there; what matters here is that confirm goes through it, under the
+        // listing lock, attributed to this order.
+        verify(stockLedger).apply(listing, -1, StockMovementReason.SALE,
+                StockChannel.ONLINE, purchaseUuid, null);
         verify(entityManager).refresh(listing, LockModeType.PESSIMISTIC_WRITE);
 
         var order = inOrder(purchaseRepository, listingRepository);
@@ -226,9 +235,8 @@ class PurchaseServiceImplTest {
             service().cancel(purchaseUuid);
         }
 
-        assertThat(listing.getStockQty()).isEqualTo(1);
-        assertThat(listing.getSold()).isZero();
-        assertThat(listing.getStatus()).isEqualTo(ListingStatus.ACTIVE);
+        verify(stockLedger).apply(listing, 1, StockMovementReason.CANCEL,
+                StockChannel.ONLINE, purchaseUuid, null);
         assertThat(purchase.getStatus()).isEqualTo(PurchaseStatus.CANCELLED);
         verify(listingRepository).save(listing);
     }
@@ -269,7 +277,7 @@ class PurchaseServiceImplTest {
         assertThat(purchase.getValue().getRecipientName()).isEqualTo("Dara");
         assertThat(purchase.getValue().getRecipientPhone()).isEqualTo("012345678");
         assertThat(purchase.getValue().getNote()).isEqualTo("Call before delivery");
-        assertThat(purchase.getValue().getTotalPrice()).isEqualTo(10.0);
+        assertThat(purchase.getValue().getTotalPrice()).isEqualByComparingTo("10.00");
         assertThat(purchase.getValue().getItems()).hasSize(1);
     }
 
@@ -456,7 +464,8 @@ class PurchaseServiceImplTest {
                 addressService,
                 listingAvailability,
                 userProfileRepository,
-                entityManager);
+                entityManager,
+                stockLedger);
     }
 
     private static Listing listing(ListingStatus status) {
@@ -494,7 +503,7 @@ class PurchaseServiceImplTest {
 
     private static Cart cartWithOneItem() {
         Listing listing = listing(ListingStatus.ACTIVE);
-        listing.setFullPrice(10.0);
+        listing.setFullPrice(new BigDecimal("10.00"));
 
         Cart cart = new Cart();
         cart.setUuid(UUID.randomUUID());

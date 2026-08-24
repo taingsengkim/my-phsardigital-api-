@@ -1,5 +1,6 @@
 package co.istad.projectpracticum.phsardigital.features.purchases.dto;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
@@ -11,8 +12,8 @@ public record PurchaseItemResponse(
         UUID listingUuid,
         String title,
         Integer quantity,
-        Double fullPrice,
-        Double unitPrice,
-        Double lineTotal
+        BigDecimal fullPrice,
+        BigDecimal unitPrice,
+        BigDecimal lineTotal
 ) {
 }

@@ -10,6 +10,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -45,12 +46,12 @@ public class Listing extends BasedEntity {
      * {@code ddl-auto: update} would add an empty {@code full_price} beside the
      * populated {@code price} rather than move anything.
      */
-    @Column(name = "price", nullable = false)
-    private Double fullPrice;
+    @Column(name = "price", nullable = false, precision = 12, scale = 2)
+    private BigDecimal fullPrice;
 
     /** The sale price, or null when the listing is not discounted. */
-    @Column(name = "discount_price")
-    private Double discountPrice;
+    @Column(name = "discount_price", precision = 12, scale = 2)
+    private BigDecimal discountPrice;
 
     @Column(nullable = false)
     private Integer stockQty;
@@ -130,7 +131,7 @@ public class Listing extends BasedEntity {
      * What a buyer actually pays. Not a {@code get...} accessor, so neither Hibernate
      * nor MapStruct mistakes it for a persistent property.
      */
-    public Double effectivePrice() {
+    public BigDecimal effectivePrice() {
         return discountPrice != null ? discountPrice : fullPrice;
     }
 

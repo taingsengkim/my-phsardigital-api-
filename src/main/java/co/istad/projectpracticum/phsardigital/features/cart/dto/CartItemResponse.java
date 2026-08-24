@@ -1,5 +1,6 @@
 package co.istad.projectpracticum.phsardigital.features.cart.dto;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
@@ -14,9 +15,9 @@ public record CartItemResponse(
         UUID listingUuid,
         String title,
         String thumbnailUri,
-        Double fullPrice,
-        Double unitPrice,
+        BigDecimal fullPrice,
+        BigDecimal unitPrice,
         Integer quantity,
-        Double lineTotal
+        BigDecimal lineTotal
 ) {
 }
