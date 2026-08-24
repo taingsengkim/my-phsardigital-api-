@@ -401,9 +401,11 @@ public class ListingServiceImpl implements ListingService{
         FileUpload newFile = fileUploadService.requireOwnedFile(objectName, currentSellerId);
         FileUpload oldFile = listing.getThumbnailFile();
         listing.setThumbnailFile(newFile);
-        Listing saved = listingRepository.save(listing);
+        // Flushed first, so the old file is no longer this listing's thumbnail when
+        // it is offered up. It survives if anything else still shows it.
+        Listing saved = listingRepository.saveAndFlush(listing);
         if (oldFile != null) {
-            fileUploadService.delete(oldFile.getObjectName());
+            fileUploadService.deleteQuietly(oldFile);
         }
         return listingResponseFactory.one(saved);
     }
@@ -469,10 +471,10 @@ public class ListingServiceImpl implements ListingService{
                 .findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Image not found on this listing"));
 
-        String objectName = toRemove.getFile().getObjectName();
+        FileUpload removedFile = toRemove.getFile();
         listing.getImages().remove(toRemove);
-        listingRepository.save(listing);
-        fileUploadService.delete(objectName);
+        listingRepository.saveAndFlush(listing);
+        fileUploadService.deleteQuietly(removedFile);
     }
     /** A discount at or above the list price advertises a saving that is not one. */
     private void requireDiscountBelowList(Double fullPrice, Double discountPrice) {
@@ -553,34 +555,37 @@ public class ListingServiceImpl implements ListingService{
         // 2. Authorization check
         requireSellerCanEdit(listing, "You are not allowed to delete this listing.");
 
-        // 3. Collect file names
-        List<String> fileNamesToDelete = new ArrayList<>();
+        // 3. Collect the files this listing was showing
+        List<FileUpload> filesToRelease = new ArrayList<>();
 
         // Add thumbnail
         if (listing.getThumbnailFile() != null) {
-            fileNamesToDelete.add(listing.getThumbnailFile().getObjectName());
+            filesToRelease.add(listing.getThumbnailFile());
         }
 
         // Add all listing images
         if (listing.getImages() != null && !listing.getImages().isEmpty()) {
             listing.getImages().forEach(image -> {
                 if (image.getFile() != null) {
-                    fileNamesToDelete.add(image.getFile().getObjectName());
+                    filesToRelease.add(image.getFile());
                 }
             });
         }
 
+        // The listing goes first: offering the files up while its own rows still point
+        // at them would find every one still in use and keep the lot.
+        listingRepository.delete(listing);
+        listingRepository.flush();
 
-        for (String fileName : fileNamesToDelete) {
+        for (FileUpload file : filesToRelease) {
             try {
-                fileUploadService.delete(fileName);
+                fileUploadService.deleteQuietly(file);
             } catch (Exception exception) {
                 // A leftover object is cheaper than refusing to delete the listing.
-                log.warn("Failed to delete file '{}' after deleting listing {}", fileName, uuid, exception);
+                log.warn("Failed to delete file '{}' after deleting listing {}",
+                        file.getObjectName(), uuid, exception);
             }
         }
-
-        listingRepository.delete(listing);
     }
 
 

@@ -19,6 +19,11 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface ListingRepository extends JpaRepository<Listing, UUID>, JpaSpecificationExecutor<Listing> {
+
+    /** Both back {@code ListingFileReferences}. */
+    boolean existsByThumbnailFile_ObjectName(String objectName);
+
+    boolean existsByImages_File_ObjectName(String objectName);
     @Query("SELECT l FROM Listing l " +
             "LEFT JOIN FETCH l.category " +
             "LEFT JOIN FETCH l.images " +

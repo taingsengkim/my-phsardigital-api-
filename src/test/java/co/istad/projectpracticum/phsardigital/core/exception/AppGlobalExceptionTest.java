@@ -17,6 +17,7 @@ import org.springframework.validation.BindException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.sql.SQLException;
 import java.util.List;
 import java.util.UUID;
 
@@ -120,6 +121,38 @@ class AppGlobalExceptionTest {
         assertThat(response.getBody().toString()).doesNotContain(privateDetail)
                 .doesNotContain("users_email_key")
                 .doesNotContain("test@example.com");
+    }
+
+    @Test
+    void aForeignKeyViolationIsReportedAsAServerFaultRatherThanAConflict() {
+        String privateDetail = "update or delete on table \"files\" violates foreign key "
+                + "constraint \"fk2pqgwypy04jxwbjl7un6b6ljl\" on table \"listings\"";
+        ReflectionTestUtils.setField(handler, "includeExceptionDetails", true);
+
+        var response = handler.handleDataIntegrityViolation(
+                new DataIntegrityViolationException("delete failed",
+                        new SQLException(privateDetail, "23503")),
+                request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(response.getBody()).isNotNull();
+        // "listings" alone is not proof of a leak — it is also the request path.
+        assertThat(response.getBody().toString())
+                .doesNotContain(privateDetail)
+                .doesNotContain("fk2pqgwypy04jxwbjl7un6b6ljl")
+                .doesNotContain("on table")
+                .doesNotContain("foreign key");
+        assertThat(response.getBody().traceId()).isNotBlank();
+    }
+
+    @Test
+    void aDuplicateKeyRemainsAConflictForTheCaller() {
+        var response = handler.handleDataIntegrityViolation(
+                new DataIntegrityViolationException("insert failed",
+                        new SQLException("duplicate key", "23505")),
+                request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
     }
 
     @Test

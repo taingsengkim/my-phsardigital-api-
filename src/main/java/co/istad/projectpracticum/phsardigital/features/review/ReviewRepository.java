@@ -17,6 +17,11 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface ReviewRepository extends JpaRepository<Review , UUID> {
+
+    /** Backs {@code ReviewFileReferences} and the detach in {@code ReviewFileListener}. */
+    boolean existsByPhoto_ObjectName(String objectName);
+
+    List<Review> findAllByPhoto_ObjectName(String objectName);
     Page<Review> findByListing(Listing listing, Pageable pageable);
 
     Page<Review> findByBuyer(UserProfile buyer, Pageable pageable);

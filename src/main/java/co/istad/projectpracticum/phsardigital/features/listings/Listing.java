@@ -67,7 +67,8 @@ public class Listing extends BasedEntity {
     @Column(nullable = false)
     private Boolean isFeatured;
 
-    @ManyToOne(cascade = CascadeType.ALL)
+    /** No cascade: {@code files} is shared, so deleting a listing must not take its thumbnail. */
+    @ManyToOne
     @JoinColumn(name = "thumbnail_file_id", nullable = false)
     private FileUpload thumbnailFile;
 

@@ -6,6 +6,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.PessimisticLockingFailureException;
+
+import java.sql.SQLException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -60,6 +62,10 @@ import java.util.UUID;
 public class AppGlobalException {
 
     private static final String APP_PACKAGE = "co.istad.projectpracticum.phsardigital";
+
+    /** SQLState class 22/23 codes worth telling apart; see {@code handleDataIntegrityViolation}. */
+    private static final String FOREIGN_KEY_VIOLATION = "23503";
+    private static final String NOT_NULL_VIOLATION = "23502";
 
     /**
      * Adds the exception type, its cause chain, and the first application stack
@@ -346,12 +352,33 @@ public class AppGlobalException {
         );
     }
 
-    /** A database constraint conflict, without exposing schema or submitted values. */
+    /**
+     * A database constraint conflict, without exposing schema or submitted values.
+     * A duplicate is the caller's to resolve; a foreign-key or not-null violation is
+     * the server breaking its own schema, so that one is a fault rather than a conflict.
+     * The constraint name goes to the log under this response's traceId either way.
+     */
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<RestErrorResponse> handleDataIntegrityViolation(
             DataIntegrityViolationException exception,
             HttpServletRequest request
     ) {
+        String sqlState = sqlStateOf(exception);
+
+        if (FOREIGN_KEY_VIOLATION.equals(sqlState) || NOT_NULL_VIOLATION.equals(sqlState)) {
+            // Detail supplied on purpose: null falls through to describe(), which
+            // spells out the raw constraint text when exception details are on.
+            return respond(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "The request could not be completed. It has been logged for investigation.",
+                    List.of(new FieldResponse(
+                            "request",
+                            "Quote the traceId on this response when reporting it.")),
+                    request,
+                    exception
+            );
+        }
+
         return respond(
                 HttpStatus.CONFLICT,
                 "The request conflicts with data that already exists.",
@@ -361,6 +388,21 @@ public class AppGlobalException {
                 request,
                 exception
         );
+    }
+
+    /** The SQLState of the deepest {@link SQLException} in the chain, or null. */
+    private static String sqlStateOf(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof SQLException sqlException) {
+                return sqlException.getSQLState();
+            }
+            if (current.getCause() == current) {
+                return null;
+            }
+            current = current.getCause();
+        }
+        return null;
     }
 
     // ---------------------------------------------------------------- security

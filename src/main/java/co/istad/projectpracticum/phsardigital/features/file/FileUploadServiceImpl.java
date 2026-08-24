@@ -45,6 +45,9 @@ public class FileUploadServiceImpl implements FileUploadService {
     private final ApplicationEventPublisher eventPublisher;
     private final MinioProps minioProps;
 
+    /** Every table that can point at a file; consulted before any delete. */
+    private final List<FileReferenceCheck> referenceChecks;
+
     /**
      * Written out rather than generated: two {@link MinioClient} beans are in play
      * and Lombok does not carry {@code @Qualifier} onto the generated constructor,
@@ -54,12 +57,14 @@ public class FileUploadServiceImpl implements FileUploadService {
                                  @Qualifier(MinioConfig.PRESIGN_CLIENT) MinioClient presignMinioClient,
                                  FileUploadRepository fileUploadRepository,
                                  ApplicationEventPublisher eventPublisher,
-                                 MinioProps minioProps) {
+                                 MinioProps minioProps,
+                                 List<FileReferenceCheck> referenceChecks) {
         this.minioClient = minioClient;
         this.presignMinioClient = presignMinioClient;
         this.fileUploadRepository = fileUploadRepository;
         this.eventPublisher = eventPublisher;
         this.minioProps = minioProps;
+        this.referenceChecks = referenceChecks;
     }
 
     @Override
@@ -213,6 +218,15 @@ public class FileUploadServiceImpl implements FileUploadService {
                 ? findOr404(name)
                 : requireOwnedFile(name, AuthUtils.extractUserId());
 
+        // NOT NULL columns cannot be detached, so a listing depending on this file
+        // blocks the delete rather than losing its picture.
+        String blocker = mandatoryReferenceTo(name);
+        if (blocker != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "This image is still used as " + blocker
+                            + ". Replace it there before deleting the file.");
+        }
+
         // Clear references and drop the row first. If that fails the object is
         // still reachable; doing it the other way round leaves a row pointing at
         // an object that no longer exists.
@@ -227,12 +241,41 @@ public class FileUploadServiceImpl implements FileUploadService {
         }
     }
 
+    /** The first mandatory holder of this file, or null when nothing depends on it. */
+    private String mandatoryReferenceTo(String objectName) {
+        return referenceChecks.stream()
+                .filter(FileReferenceCheck::isMandatory)
+                .filter(check -> check.isReferenced(objectName))
+                .map(FileReferenceCheck::referenceName)
+                .findFirst()
+                .orElse(null);
+    }
+
+    /** The first holder of this file of any kind, or null when nothing points at it. */
+    private String anyReferenceTo(String objectName) {
+        return referenceChecks.stream()
+                .filter(check -> check.isReferenced(objectName))
+                .map(FileReferenceCheck::referenceName)
+                .findFirst()
+                .orElse(null);
+    }
+
     @Override
     @Transactional
     public void deleteQuietly(FileUpload file) {
         if (file == null) {
             return;
         }
+
+        // The caller has already repointed what it owned, so anything still showing
+        // this file belongs to somebody else. An orphan row is cheaper than breaking them.
+        String holder = anyReferenceTo(file.getObjectName());
+        if (holder != null) {
+            log.info("Keeping file '{}' after replacement: still used as {}",
+                    file.getObjectName(), holder);
+            return;
+        }
+
         try {
             removeObject(file);
         } catch (Exception exception) {
