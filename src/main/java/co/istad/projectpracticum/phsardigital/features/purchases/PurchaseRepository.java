@@ -1,8 +1,10 @@
 package co.istad.projectpracticum.phsardigital.features.purchases;
 
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -14,6 +16,11 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface PurchaseRepository extends JpaRepository<Purchase, UUID> {
+
+    /** Serializes every state transition for one order before inventory is touched. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT p FROM Purchase p WHERE p.uuid = :uuid")
+    Optional<Purchase> findByUuidForUpdate(@Param("uuid") UUID uuid);
 
     Page<Purchase> findByBuyerId(String buyerId, Pageable pageable);
 

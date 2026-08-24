@@ -1,5 +1,7 @@
 package co.istad.projectpracticum.phsardigital.features.seller;
 
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -20,6 +22,7 @@ import org.springframework.web.server.ResponseStatusException;
 public class SellerAccessGuard {
 
     private final SellerRepository sellerRepository;
+    private final EntityManager entityManager;
 
     /**
      * @param sellerId the caller's Keycloak subject
@@ -32,6 +35,28 @@ public class SellerAccessGuard {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Seller profile not found. Please complete seller registration first."));
 
+        return requireActive(profile);
+    }
+
+    /**
+     * The active check used when accepting money or inventory obligations. The lock is
+     * shared, not exclusive: trading only reads {@code isActive}, so concurrent orders
+     * for one shop may proceed together while an administrator's suspension still has
+     * to wait for them and is therefore ordered against them.
+     *
+     * <p>Refreshing under the lock is intentional: the same seller may already be
+     * present in the persistence context through an eagerly loaded order or listing,
+     * and that copy predates the lock.
+     */
+    public SellerProfile requireActiveSellerForTrade(String sellerId) {
+        SellerProfile profile = sellerRepository.findByIdForShare(sellerId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Seller profile not found. Please complete seller registration first."));
+        entityManager.refresh(profile, LockModeType.PESSIMISTIC_READ);
+        return requireActive(profile);
+    }
+
+    private SellerProfile requireActive(SellerProfile profile) {
         if (!Boolean.TRUE.equals(profile.getIsActive())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, suspensionMessage(profile));
         }

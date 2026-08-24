@@ -7,7 +7,7 @@ import co.istad.projectpracticum.phsardigital.features.listings.ListingRepositor
 import co.istad.projectpracticum.phsardigital.features.listings.ListingStatus;
 import co.istad.projectpracticum.phsardigital.features.purchases.PurchaseRepository;
 import co.istad.projectpracticum.phsardigital.features.purchases.PurchaseStatus;
-import co.istad.projectpracticum.phsardigital.features.seller.SellerProfileRepository;
+import co.istad.projectpracticum.phsardigital.features.seller.SellerRepository;
 import co.istad.projectpracticum.phsardigital.features.seller.application.ApplicationStatus;
 import co.istad.projectpracticum.phsardigital.features.seller.application.SellerApplicationRepository;
 import co.istad.projectpracticum.phsardigital.features.subscription.SellerSubscriptionRepository;
@@ -46,7 +46,7 @@ class AdminDashboardServiceImplTest {
     @Mock
     private UserProfileRepository userRepository;
     @Mock
-    private SellerProfileRepository sellerProfileRepository;
+    private SellerRepository sellerRepository;
     @Mock
     private CategoryRepository categoryRepository;
     @Mock
@@ -64,7 +64,7 @@ class AdminDashboardServiceImplTest {
     void setUp() {
         service = new AdminDashboardServiceImpl(
                 userRepository,
-                sellerProfileRepository,
+                sellerRepository,
                 categoryRepository,
                 new CategoryAvailability(),
                 listingRepository,
@@ -77,8 +77,8 @@ class AdminDashboardServiceImplTest {
     @Test
     void buildsGroupedSummaryFromOneFixedEvaluationTime() {
         when(userRepository.count()).thenReturn(41L);
-        when(sellerProfileRepository.count()).thenReturn(12L);
-        when(sellerProfileRepository.countByIsActiveTrue()).thenReturn(9L);
+        when(sellerRepository.count()).thenReturn(12L);
+        when(sellerRepository.countByIsActiveTrue()).thenReturn(9L);
         when(listingRepository.count()).thenReturn(125L);
         Category publicCategory = category(true, false, null);
         when(categoryRepository.findAllByIsDeletedFalseAndIsActiveTrue(Sort.unsorted()))

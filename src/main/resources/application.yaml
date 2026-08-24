@@ -29,6 +29,14 @@ spring:
   jpa:
     hibernate:
       ddl-auto: ${JPA_DDL_AUTO:update}
+    properties:
+      jakarta:
+        persistence:
+          # Commerce paths take pessimistic row locks. Without a bound, a contended row
+          # makes a request wait indefinitely; failing fast surfaces as a retryable 409
+          # through AppGlobalException#handlePessimisticLockingFailure.
+          lock:
+            timeout: ${DB_LOCK_TIMEOUT_MS:5000}
   servlet:
     multipart:
       max-file-size: 20MB

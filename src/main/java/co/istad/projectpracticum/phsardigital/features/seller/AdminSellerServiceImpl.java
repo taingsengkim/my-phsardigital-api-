@@ -17,7 +17,7 @@ import java.time.LocalDateTime;
 @Slf4j
 public class AdminSellerServiceImpl implements AdminSellerService {
 
-    private final SellerProfileRepository sellerProfileRepository;
+    private final SellerRepository sellerRepository;
 
     @Override
     @Transactional
@@ -30,7 +30,7 @@ public class AdminSellerServiceImpl implements AdminSellerService {
         profile.setSuspensionReason(request.reason());
 
         log.info("Shop {} suspended by {}", sellerId, profile.getSuspendedBy());
-        return toResponse(sellerProfileRepository.save(profile));
+        return toResponse(sellerRepository.save(profile));
     }
 
     @Override
@@ -46,11 +46,11 @@ public class AdminSellerServiceImpl implements AdminSellerService {
         profile.setSuspensionReason(null);
 
         log.info("Shop {} restored by {}", sellerId, AuthUtils.extractUserId());
-        return toResponse(sellerProfileRepository.save(profile));
+        return toResponse(sellerRepository.save(profile));
     }
 
     private SellerProfile require(String sellerId) {
-        return sellerProfileRepository.findById(sellerId)
+        return sellerRepository.findByIdForUpdate(sellerId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Shop not found"));
     }
 

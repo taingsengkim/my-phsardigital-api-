@@ -18,7 +18,7 @@ import co.istad.projectpracticum.phsardigital.features.review.review_reply.Revie
 import co.istad.projectpracticum.phsardigital.features.review.review_reply.ReviewReplyMapper;
 import co.istad.projectpracticum.phsardigital.features.review.review_reply.ReviewReplyRepository;
 import co.istad.projectpracticum.phsardigital.features.seller.SellerProfile;
-import co.istad.projectpracticum.phsardigital.features.seller.SellerProfileRepository;
+import co.istad.projectpracticum.phsardigital.features.seller.SellerRepository;
 import co.istad.projectpracticum.phsardigital.features.user.UserProfile;
 import co.istad.projectpracticum.phsardigital.features.user.UserProfileRepository;
 import lombok.RequiredArgsConstructor;
@@ -47,7 +47,7 @@ public class ReviewServiceImpl implements ReviewService {
     private final ReviewReplyRepository reviewReplyRepository;
     private final ListingRepository listingRepository;
     private final UserProfileRepository userRepository;
-    private final SellerProfileRepository sellerProfileRepository;
+    private final SellerRepository sellerRepository;
     private final FileUploadService fileUploadService;
     private final ReviewMapper reviewMapper;
     private final ReviewReplyMapper replyMapper;
@@ -172,7 +172,7 @@ public class ReviewServiceImpl implements ReviewService {
      * common case of buying one size and reviewing the product.
      *
      * <p>{@code COMPLETED} rather than any order at all, because it is the only
-     * terminal state — {@code cancel} still accepts a {@code PENDING} or
+     * terminal state â€” {@code cancel} still accepts a {@code PENDING} or
      * {@code CONFIRMED} order, so anything looser would let someone order, review, and
      * cancel for a free opinion.
      */
@@ -200,7 +200,7 @@ public class ReviewServiceImpl implements ReviewService {
     @Override
     public Page<ReviewResponse> getSellerReviews(Pageable pageable) {
         String userId = AuthUtils.extractUserId();
-        SellerProfile seller = sellerProfileRepository.findById(userId)
+        SellerProfile seller = sellerRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Seller profile not found"));
         return reviewRepository.findBySeller(seller, pageable)
@@ -211,7 +211,7 @@ public class ReviewServiceImpl implements ReviewService {
     public Page<ReviewResponse> getReviewsForSeller(String sellerId, Pageable pageable) {
         // Resolved rather than queried by id straight off, so an unknown shop answers
         // 404 instead of an empty page that looks like a shop nobody has reviewed.
-        SellerProfile seller = sellerProfileRepository.findById(sellerId)
+        SellerProfile seller = sellerRepository.findById(sellerId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Shop not found"));
         return reviewRepository.findBySeller(seller, pageable)
@@ -223,7 +223,7 @@ public class ReviewServiceImpl implements ReviewService {
     public ReviewReplyResponse replyToReview(UUID reviewUuid, ReviewReplyRequest request) {
         // 1. Get current user as seller
         String userId = AuthUtils.extractUserId();
-        SellerProfile seller = sellerProfileRepository.findById(userId)
+        SellerProfile seller = sellerRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Seller profile not found"));
 

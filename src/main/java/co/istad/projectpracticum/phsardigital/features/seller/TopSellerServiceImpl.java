@@ -23,7 +23,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class TopSellerServiceImpl implements TopSellerService {
 
-    /** Only settled orders count — the rest are money that has not moved, or never will. */
+    /** Only settled orders count â€” the rest are money that has not moved, or never will. */
     private static final PurchaseStatus SETTLED = PurchaseStatus.COMPLETED;
 
     /**
@@ -35,7 +35,7 @@ public class TopSellerServiceImpl implements TopSellerService {
 
     private final PurchaseRepository purchaseRepository;
     private final ReviewRepository reviewRepository;
-    private final SellerProfileRepository sellerProfileRepository;
+    private final SellerRepository sellerRepository;
     private final FileUploadService fileUploadService;
 
     @Override
@@ -65,7 +65,7 @@ public class TopSellerServiceImpl implements TopSellerService {
                 : toSales(ranked);
 
         Map<String, SellerProfile> profiles = new HashMap<>();
-        sellerProfileRepository.findAllById(sellerIds)
+        sellerRepository.findAllById(sellerIds)
                 .forEach(profile -> profiles.put(profile.getSellerId(), profile));
 
         List<Entry> entries = new ArrayList<>();

@@ -17,9 +17,11 @@ public interface CartService {
      * a new cart is created for that shop if the buyer has none.
      */
     CartResponse addItem(AddCartItemRequest request);
+    /** Set a listing's absolute cart quantity; safe to retry with the same request. */
+    CartResponse setItem(AddCartItemRequest request);
     /** Change quantity of an item in the shop's cart. */
     CartResponse updateItem(String sellerId, UUID itemUuid, UpdateCartItemRequest request);
-    /** Remove one item; deletes the cart if it becomes empty. */
+    /** Remove one item; deletes the cart if it becomes empty. Retries are a no-op. */
     CartResponse removeItem(String sellerId, UUID itemUuid);
     /** Empty (delete) the buyer's cart for one shop. */
     void clear(String sellerId);

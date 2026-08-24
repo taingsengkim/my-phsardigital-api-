@@ -5,6 +5,7 @@ import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -330,21 +331,33 @@ public class AppGlobalException {
         );
     }
 
-    /**
-     * A constraint the database refused. The root cause names the constraint,
-     * which is the only part that says <em>which</em> rule was broken, so it is
-     * surfaced rather than collapsed into "conflict".
-     */
+    /** A short-lived row-lock collision is retryable, not an internal server error. */
+    @ExceptionHandler(PessimisticLockingFailureException.class)
+    public ResponseEntity<RestErrorResponse> handlePessimisticLockingFailure(
+            PessimisticLockingFailureException exception,
+            HttpServletRequest request
+    ) {
+        return respond(
+                HttpStatus.CONFLICT,
+                "This resource is being changed by another request. Try again shortly.",
+                null,
+                request,
+                exception
+        );
+    }
+
+    /** A database constraint conflict, without exposing schema or submitted values. */
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<RestErrorResponse> handleDataIntegrityViolation(
             DataIntegrityViolationException exception,
             HttpServletRequest request
     ) {
-        String cause = firstLine(exception.getMostSpecificCause().getMessage());
         return respond(
                 HttpStatus.CONFLICT,
                 "The request conflicts with data that already exists.",
-                List.of(new FieldResponse("constraint", cause)),
+                List.of(new FieldResponse(
+                        "request",
+                        "Check duplicate values and records referenced by this request.")),
                 request,
                 exception
         );

@@ -33,7 +33,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class SellerProfileServiceImpl implements SellerProfileService{
 
-    private final SellerProfileRepository sellerProfileRepository;
+    private final SellerRepository sellerRepository;
     private final ListingRepository listingRepository;
     private final ListingResponseFactory listingResponseFactory;
     private final SellerProfileMapper sellerProfileMapper;
@@ -45,7 +45,7 @@ public class SellerProfileServiceImpl implements SellerProfileService{
 
     @Override
     public SellerProfileResponse getPublicProfile(String sellerId) {
-        SellerProfile profile = sellerProfileRepository.findById(sellerId)
+        SellerProfile profile = sellerRepository.findById(sellerId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Shop not found"));
         return withRating(profile);
@@ -53,13 +53,13 @@ public class SellerProfileServiceImpl implements SellerProfileService{
 
     @Override
     public Page<ListingResponse> getSellerListings(String sellerId, Pageable pageable) {
-        // Verify seller exists (if not, return empty or 404 – we choose 404)
-        SellerProfile seller = sellerProfileRepository.findById(sellerId)
+        // Verify seller exists (if not, return empty or 404 â€“ we choose 404)
+        SellerProfile seller = sellerRepository.findById(sellerId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Shop not found"));
 
-        // A suspended shop keeps its page — the profile already reports isActive, so a
-        // client can say why it is empty — but stops offering anything for sale.
+        // A suspended shop keeps its page â€” the profile already reports isActive, so a
+        // client can say why it is empty â€” but stops offering anything for sale.
         if (!Boolean.TRUE.equals(seller.getIsActive())) {
             return Page.empty(pageable);
         }
@@ -83,7 +83,7 @@ public class SellerProfileServiceImpl implements SellerProfileService{
     @Override
     public SellerProfileResponse getMyProfile() {
         String userId = AuthUtils.extractUserId(); // Keycloak sub
-        SellerProfile profile = sellerProfileRepository.findById(userId)
+        SellerProfile profile = sellerRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Seller profile not found for this user"));
         return withRatingForOwner(profile);
@@ -93,7 +93,7 @@ public class SellerProfileServiceImpl implements SellerProfileService{
     @Transactional
     public SellerProfileResponse updateMyProfile(SellerProfileUpdateRequest request) {
         String userId = AuthUtils.extractUserId();
-        SellerProfile profile = sellerProfileRepository.findById(userId)
+        SellerProfile profile = sellerRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Seller profile not found"));
 
@@ -115,7 +115,7 @@ public class SellerProfileServiceImpl implements SellerProfileService{
         FileUpload replacedCover = applyImage(
                 request.coverObjectName(), profile.getCoverFile(), profile::setCoverFile, userId);
 
-        SellerProfile updated = sellerProfileRepository.saveAndFlush(profile);
+        SellerProfile updated = sellerRepository.saveAndFlush(profile);
 
         // Flushed first, so the old rows are no longer referenced when they are removed.
         if (replacedLogo != null) {
@@ -148,7 +148,7 @@ public class SellerProfileServiceImpl implements SellerProfileService{
     }
 
     /**
-     * Points one of the shop's images — the logo or the cover — at a new file, if one
+     * Points one of the shop's images â€” the logo or the cover â€” at a new file, if one
      * was supplied.
      *
      * @return the file that was displaced and should now be deleted, or null when

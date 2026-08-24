@@ -9,13 +9,15 @@ import co.istad.projectpracticum.phsardigital.features.listings.ListingRepositor
 import co.istad.projectpracticum.phsardigital.features.seller.SellerAccessGuard;
 import co.istad.projectpracticum.phsardigital.features.seller.SellerProfileMapper;
 import co.istad.projectpracticum.phsardigital.features.seller.dto.SellerProfileSummaryResponse;
-import jakarta.transaction.Transactional;
+import co.istad.projectpracticum.phsardigital.features.user.UserProfileRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 @Service
 @RequiredArgsConstructor
@@ -27,11 +29,13 @@ public class CartServiceImpl implements CartService {
     private final SellerAccessGuard sellerAccessGuard;
     private final SellerProfileMapper sellerProfileMapper;
     private final FileUploadService fileUploadService;
+    private final UserProfileRepository userProfileRepository;
 
     @Override
     public List<CartResponse> getMyCarts() {
         String buyerId = AuthUtils.extractUserId();
         List<CartResponse> result = new ArrayList<>();
+        // An emptied cart is deleted rather than kept, so every row here has items.
         for (Cart cart : cartRepository.findByBuyerId(buyerId)) {
             result.add(toResponse(cart));
         }
@@ -50,6 +54,16 @@ public class CartServiceImpl implements CartService {
     @Override
     @Transactional
     public CartResponse addItem(AddCartItemRequest request) {
+        return writeItem(request, true);
+    }
+
+    @Override
+    @Transactional
+    public CartResponse setItem(AddCartItemRequest request) {
+        return writeItem(request, false);
+    }
+
+    private CartResponse writeItem(AddCartItemRequest request, boolean increment) {
         String buyerId = AuthUtils.extractUserId();
         Listing listing = listingRepository.findById(request.listingUuid())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found."));
@@ -58,22 +72,37 @@ public class CartServiceImpl implements CartService {
         // Checkout refuses a suspended shop anyway; refusing here too means the buyer
         // finds out before they have built a basket they cannot buy.
         sellerAccessGuard.requireActiveSeller(sellerId);
-        // find this buyer's cart for THIS shop, or create one
-        Cart cart = cartRepository
-                .findByBuyerIdAndSellerProfile_SellerId(buyerId, sellerId)
-                .orElseGet(() -> {
-                    Cart c = new Cart();
-                    c.setBuyerId(buyerId);
-                    c.setSellerProfile(listing.getSellerProfile());
-                    return c;
-                });
-        // already in this cart? bump quantity : new line
+        // POST preserves the familiar "add more" behavior, so adding nothing is a
+        // mistake worth naming. PUT supplies the desired total, where zero is the
+        // ordinary way to say "no longer in my basket".
+        if (increment && request.quantity() == 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Quantity must be at least 1 when adding. Use PUT to set an exact total.");
+        }
+        Cart cart = lockedOrNewCart(buyerId, sellerId, listing);
         CartItem existing = cart.getItems().stream()
                 .filter(i -> i.getListing().getUuid().equals(listing.getUuid()))
                 .findFirst()
                 .orElse(null);
 
-        int newQty = (existing == null ? 0 : existing.getQuantity()) + request.quantity();
+        int currentQty = existing == null ? 0 : existing.getQuantity();
+        int newQty;
+        try {
+            newQty = increment
+                    ? Math.addExact(currentQty, request.quantity())
+                    : request.quantity();
+        } catch (ArithmeticException exception) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Cart quantity is too large.", exception);
+        }
+        // A desired total of zero removes the line, which is what a client retrying
+        // its own "remove" naturally sends.
+        if (newQty == 0) {
+            if (existing != null) {
+                cart.getItems().remove(existing);
+            }
+            return afterRemoval(cart);
+        }
         if (listing.getStockQty() < newQty) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Not enough stock for: " + listing.getTitle() + " (available " + listing.getStockQty() + ")");
         }
@@ -83,7 +112,7 @@ public class CartServiceImpl implements CartService {
             CartItem item = new CartItem();
             item.setCart(cart);
             item.setListing(listing);
-            item.setQuantity(request.quantity());
+            item.setQuantity(newQty);
             cart.getItems().add(item);
         }
         return toResponse(cartRepository.save(cart));
@@ -109,29 +138,69 @@ public class CartServiceImpl implements CartService {
     @Override
     @Transactional
     public CartResponse removeItem(String sellerId, UUID itemUuid) {
-        Cart cart = getOwnedCart(sellerId);
-        cart.getItems().removeIf(i -> i.getUuid().equals(itemUuid));
-        // empty cart -> delete it so the shop slot is freed. The shop block is still
-        // answered, so the page that emptied it can keep its heading.
-        if (cart.getItems().isEmpty()) {
-            SellerProfileSummaryResponse shop = sellerProfileMapper.toSummary(cart.getSellerProfile());
-            cartRepository.delete(cart);
-            return new CartResponse(null, shop, new ArrayList<>(), 0.0);
+        Optional<Cart> found = findOwnedCartForUpdate(sellerId);
+        // Removing the last item deletes the cart, so a retried removal finds nothing.
+        // That is the same outcome the caller asked for, not a 404.
+        if (found.isEmpty()) {
+            return new CartResponse(null, null, new ArrayList<>(), 0.0);
         }
-        return toResponse(cartRepository.save(cart));
+        Cart cart = found.get();
+        cart.getItems().removeIf(i -> i.getUuid().equals(itemUuid));
+        return afterRemoval(cart);
     }
 
     @Override
     @Transactional
     public void clear(String sellerId) {
-        Cart cart = getOwnedCart(sellerId);
-        cartRepository.delete(cart);
+        findOwnedCartForUpdate(sellerId).ifPresent(cartRepository::delete);
+    }
+
+    /**
+     * An emptied cart is deleted so the shop slot is freed. The shop block is still
+     * answered, so the page that emptied it can keep its heading. A cart that was
+     * never persisted has nothing to delete.
+     */
+    private CartResponse afterRemoval(Cart cart) {
+        if (cart.getItems().isEmpty()) {
+            SellerProfileSummaryResponse shop = sellerProfileMapper.toSummary(cart.getSellerProfile());
+            if (cart.getUuid() != null) {
+                cartRepository.delete(cart);
+            }
+            return new CartResponse(null, shop, new ArrayList<>(), 0.0);
+        }
+        return toResponse(cartRepository.save(cart));
     }
 
     private Cart getOwnedCart(String sellerId) {
-        String buyerId = AuthUtils.extractUserId();
-        return cartRepository.findByBuyerIdAndSellerProfile_SellerId(buyerId, sellerId)
+        return findOwnedCartForUpdate(sellerId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No cart for this shop."));
+    }
+
+    private Optional<Cart> findOwnedCartForUpdate(String sellerId) {
+        String buyerId = AuthUtils.extractUserId();
+        return cartRepository.findByBuyerIdAndSellerIdForUpdate(buyerId, sellerId);
+    }
+
+    /**
+     * Existing carts serialize on their own row. For a first cart there is no row to
+     * lock, so briefly lock this buyer's profile and check again before creating it.
+     * This avoids two simultaneous first adds racing the cart's buyer/shop constraint,
+     * without making established carts for different shops block one another.
+     */
+    private Cart lockedOrNewCart(String buyerId, String sellerId, Listing listing) {
+        return cartRepository.findByBuyerIdAndSellerIdForUpdate(buyerId, sellerId)
+                .orElseGet(() -> {
+                    userProfileRepository.findByIdForCommerceLock(buyerId)
+                            .orElseThrow(() -> new ResponseStatusException(
+                                    HttpStatus.NOT_FOUND, "Buyer profile not found."));
+                    return cartRepository.findByBuyerIdAndSellerIdForUpdate(buyerId, sellerId)
+                            .orElseGet(() -> {
+                                Cart cart = new Cart();
+                                cart.setBuyerId(buyerId);
+                                cart.setSellerProfile(listing.getSellerProfile());
+                                return cart;
+                            });
+                });
     }
 
     private CartResponse toResponse(Cart cart) {

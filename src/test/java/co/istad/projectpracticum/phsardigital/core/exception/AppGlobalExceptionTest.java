@@ -1,6 +1,8 @@
 package co.istad.projectpracticum.phsardigital.core.exception;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.CannotAcquireLockException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -92,6 +94,32 @@ class AppGlobalExceptionTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(response.getBody()).isNotNull();
         assertThat(response.getBody().message()).contains("Reload").contains("try again");
+    }
+
+    @Test
+    void rowLockConflictAsksTheClientToRetry() {
+        var response = handler.handlePessimisticLockingFailure(
+                new CannotAcquireLockException("lock timeout"), request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().message()).contains("another request").contains("Try again");
+    }
+
+    @Test
+    void databaseConstraintErrorsNeverExposeSchemaDetails() {
+        String privateDetail = "duplicate key violates constraint users_email_key (email=test@example.com)";
+        ReflectionTestUtils.setField(handler, "includeExceptionDetails", true);
+
+        var response = handler.handleDataIntegrityViolation(
+                new DataIntegrityViolationException("insert failed", new RuntimeException(privateDetail)),
+                request);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().toString()).doesNotContain(privateDetail)
+                .doesNotContain("users_email_key")
+                .doesNotContain("test@example.com");
     }
 
     @Test

@@ -31,6 +31,12 @@ public class CartController {
         return cartService.addItem(request);
     }
 
+    // Retry-safe alternative: quantity is the desired total, not an increment.
+    @PutMapping("/items")
+    public CartResponse setItem(@Valid @RequestBody AddCartItemRequest request) {
+        return cartService.setItem(request);
+    }
+
     @PatchMapping("/{sellerId}/items/{itemUuid}")
     public CartResponse updateItem(@PathVariable String sellerId,
                                    @PathVariable UUID itemUuid,

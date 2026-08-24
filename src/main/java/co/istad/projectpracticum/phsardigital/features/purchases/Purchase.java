@@ -3,8 +3,10 @@ package co.istad.projectpracticum.phsardigital.features.purchases;
 import co.istad.projectpracticum.phsardigital.config.config.BasedEntity;
 import co.istad.projectpracticum.phsardigital.features.seller.SellerProfile;
 import jakarta.persistence.*;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
+import org.springframework.data.domain.Persistable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -14,11 +16,20 @@ import java.util.UUID;
 @Table(name = "purchases")
 @Getter
 @Setter
-public class Purchase extends BasedEntity {
+public class Purchase extends BasedEntity implements Persistable<UUID> {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID uuid;
+
+    /**
+     * Checkout uses the order UUID as its idempotency key. Spring Data normally
+     * treats any entity with an assigned id as existing and calls {@code merge}; this
+     * flag keeps a newly constructed order on the safer {@code persist} path.
+     */
+    @Transient
+    @Getter(AccessLevel.NONE)
+    @Setter(AccessLevel.NONE)
+    private boolean newEntity = true;
 
     @Column(name = "buyer_id", nullable = false)
     private String buyerId;
@@ -54,4 +65,31 @@ public class Purchase extends BasedEntity {
 
     @OneToMany(mappedBy = "purchase", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<PurchaseItem> items = new ArrayList<>();
+
+    @Override
+    public UUID getId() {
+        return uuid;
+    }
+
+    @Override
+    public boolean isNew() {
+        return newEntity;
+    }
+
+    /**
+     * Checkout assigns the cart's UUID, but the id is no longer database-generated, so
+     * anything else that builds an order still gets a key instead of a null-PK failure.
+     */
+    @PrePersist
+    private void ensureId() {
+        if (uuid == null) {
+            uuid = UUID.randomUUID();
+        }
+    }
+
+    @PostLoad
+    @PostPersist
+    private void markNotNew() {
+        newEntity = false;
+    }
 }

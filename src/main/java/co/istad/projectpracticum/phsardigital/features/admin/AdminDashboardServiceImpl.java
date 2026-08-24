@@ -8,7 +8,7 @@ import co.istad.projectpracticum.phsardigital.features.listings.ListingRepositor
 import co.istad.projectpracticum.phsardigital.features.listings.ListingStatus;
 import co.istad.projectpracticum.phsardigital.features.purchases.PurchaseRepository;
 import co.istad.projectpracticum.phsardigital.features.purchases.PurchaseStatus;
-import co.istad.projectpracticum.phsardigital.features.seller.SellerProfileRepository;
+import co.istad.projectpracticum.phsardigital.features.seller.SellerRepository;
 import co.istad.projectpracticum.phsardigital.features.seller.application.ApplicationStatus;
 import co.istad.projectpracticum.phsardigital.features.seller.application.SellerApplicationRepository;
 import co.istad.projectpracticum.phsardigital.features.subscription.SellerSubscriptionRepository;
@@ -52,7 +52,7 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
     private static final String MARKETPLACE_CURRENCY_CODE = "USD";
 
     private final UserProfileRepository userRepository;
-    private final SellerProfileRepository sellerProfileRepository;
+    private final SellerRepository sellerRepository;
     private final CategoryRepository categoryRepository;
     private final CategoryAvailability categoryAvailability;
     private final ListingRepository listingRepository;
@@ -79,8 +79,8 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
         return new AdminDashboardSummaryResponse(
                 new UserSummary(totalUsers),
                 new SellerSummary(
-                        sellerProfileRepository.count(),
-                        sellerProfileRepository.countByIsActiveTrue()),
+                        sellerRepository.count(),
+                        sellerRepository.countByIsActiveTrue()),
                 new ListingSummary(
                         listingRepository.count(),
                         countPubliclyAvailableListings()),
