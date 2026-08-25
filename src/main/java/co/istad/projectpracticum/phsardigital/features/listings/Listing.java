@@ -85,8 +85,16 @@ public class Listing extends BasedEntity {
      *
      * <p>Rows written before this carry a null {@code sortOrder} and sort last, which
      * is the harmless end of the gallery; the first reorder normalises them.
+     *
+     * <p>Cascaded like {@code listingAttributes}: nothing else writes {@code
+     * listing_images} — there is no repository for it — so without a persist cascade
+     * every image built by {@code attachImages} and {@code addImage} was dropped on
+     * commit without an error, leaving a listing that kept only its thumbnail. REMOVE
+     * comes with it so deleting a listing takes its gallery rows rather than leaving
+     * them behind a foreign key. The files themselves are shared and stay put: {@code
+     * ListingImage.file} carries no cascade of its own.
      */
-    @OneToMany(mappedBy = "listing", orphanRemoval = true)
+    @OneToMany(mappedBy = "listing", orphanRemoval = true, cascade = CascadeType.ALL)
     @OrderBy("sortOrder ASC")
     private List<ListingImage> images = new ArrayList<>();
 
