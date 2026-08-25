@@ -522,8 +522,7 @@ class PurchaseServiceImplTest {
     private static Address addressWithPhotos(UUID addressId) {
         Address address = new Address();
         address.setId(addressId);
-        address.setLine1("St 271");
-        address.setCity("Phnom Penh");
+        address.setFormattedAddress("Borey Peng Huoth, 271, Phum 3, Boeng Keng Kang");
         address.setRecipient("Dara");
         address.setPhone("012345678");
         address.getPhotos().add(photo(address, "road.jpg", "turn at the pagoda", 0));

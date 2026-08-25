@@ -35,8 +35,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -384,11 +382,15 @@ public class PurchaseServiceImpl implements PurchaseService {
         }
     }
 
-    /** Flattens a saved address into the single line the order stores. */
+    /**
+     * The single line the order stores for a saved address.
+     *
+     * <p>The address feature renders it, because how the parts read as one line depends
+     * on which shape the address takes — see {@code AddressType} — and an order should
+     * not have to know the difference.
+     */
     private String format(Address address) {
-        return Stream.of(address.getLine1(), address.getLine2(), address.getCity(), address.getProvince())
-                .filter(part -> part != null && !part.isBlank())
-                .collect(Collectors.joining(", "));
+        return address.getFormattedAddress();
     }
 
     private static String trimToNull(String value) {

@@ -1,5 +1,6 @@
 package co.istad.projectpracticum.phsardigital.features.address.dto;
 
+import co.istad.projectpracticum.phsardigital.features.address.AddressType;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
@@ -10,11 +11,20 @@ import java.util.List;
 
 /**
  * Every field is optional: this backs a PATCH, so an absent field means "leave it
- * alone" rather than "clear it". {@code line1} is required on create and cannot be
- * blanked here, which is why it carries no {@code @NotBlank} — null simply means
- * unchanged.
+ * alone" rather than "clear it". The fields a shape requires cannot be blanked here —
+ * sending {@code ""} for one is refused the same way omitting it on create is.
  */
 public record UpdateAddressRequest(
+        /**
+         * Switches the address between shapes. Doing so drops whatever belonged only to
+         * the old shape — a CITY address turned PROVINCE keeps no location name or
+         * street no. — so the same call must carry what the new shape needs.
+         *
+         * <p>Absent leaves the shape as it is, and the fields sent are then checked
+         * against that.
+         */
+        AddressType type,
+
         @Size(max = 50, message = "Label must not exceed 50 characters")
         String label,
 
@@ -24,17 +34,23 @@ public record UpdateAddressRequest(
         @Size(max = 30, message = "Phone must not exceed 30 characters")
         String phone,
 
-        @Size(max = 2000, message = "Address line 1 must not exceed 2000 characters")
-        String line1,
+        @Size(max = 255, message = "Location name must not exceed 255 characters")
+        String locationName,
 
-        @Size(max = 2000, message = "Address line 2 must not exceed 2000 characters")
-        String line2,
-
-        @Size(max = 100, message = "City must not exceed 100 characters")
-        String city,
+        @Size(max = 50, message = "Street No. must not exceed 50 characters")
+        String streetNo,
 
         @Size(max = 100, message = "Province must not exceed 100 characters")
         String province,
+
+        @Size(max = 100, message = "District must not exceed 100 characters")
+        String district,
+
+        @Size(max = 100, message = "Commune must not exceed 100 characters")
+        String commune,
+
+        @Size(max = 100, message = "Village must not exceed 100 characters")
+        String village,
 
         @DecimalMin(value = "-90.0", message = "Latitude must be between -90 and 90")
         @DecimalMax(value = "90.0", message = "Latitude must be between -90 and 90")
