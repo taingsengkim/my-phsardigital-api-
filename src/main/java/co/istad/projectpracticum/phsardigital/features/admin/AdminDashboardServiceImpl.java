@@ -10,6 +10,7 @@ import co.istad.projectpracticum.phsardigital.features.purchases.PurchaseReposit
 import co.istad.projectpracticum.phsardigital.features.purchases.PurchaseStatus;
 import co.istad.projectpracticum.phsardigital.features.seller.SellerRepository;
 import co.istad.projectpracticum.phsardigital.features.seller.application.ApplicationStatus;
+import co.istad.projectpracticum.phsardigital.features.seller.application.SellerApplicationDocumentRepository;
 import co.istad.projectpracticum.phsardigital.features.seller.application.SellerApplicationRepository;
 import co.istad.projectpracticum.phsardigital.features.subscription.SellerSubscriptionRepository;
 import co.istad.projectpracticum.phsardigital.features.subscription.SubscriptionPlan;
@@ -57,6 +58,7 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
     private final CategoryAvailability categoryAvailability;
     private final ListingRepository listingRepository;
     private final SellerApplicationRepository applicationRepository;
+    private final SellerApplicationDocumentRepository applicationDocumentRepository;
     private final PurchaseRepository purchaseRepository;
     private final SellerSubscriptionRepository subscriptionRepository;
     private final Clock clock;
@@ -77,7 +79,9 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
                 subscriptionEvaluationTime);
 
         return new AdminDashboardSummaryResponse(
-                new UserSummary(totalUsers),
+                new UserSummary(
+                        totalUsers,
+                        purchaseRepository.countDistinctBuyersByStatus(SETTLED)),
                 new SellerSummary(
                         sellerRepository.count(),
                         sellerRepository.countByIsActiveTrue()),
@@ -85,7 +89,9 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
                         listingRepository.count(),
                         countPubliclyAvailableListings()),
                 new ApplicationSummary(
-                        applicationRepository.countByStatus(ApplicationStatus.PENDING)),
+                        applicationRepository.countByStatus(ApplicationStatus.PENDING),
+                        applicationDocumentRepository.countByApplicationStatus(
+                                ApplicationStatus.PENDING)),
                 new PurchaseSummary(
                         purchaseRepository.countByStatus(SETTLED),
                         new Money(completedGmv(), MARKETPLACE_CURRENCY_CODE)),

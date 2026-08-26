@@ -35,6 +35,19 @@ public interface PurchaseRepository extends JpaRepository<Purchase, UUID> {
 
     long countByStatus(PurchaseStatus status);
 
+    /**
+     * How many distinct people have ever reached this order state — the dashboard's
+     * buyer count.
+     *
+     * <p>Derived from orders rather than from a role, because roles live in Keycloak
+     * and no local column marks a profile as a buyer. Counter sales rung up at a
+     * seller's till carry no signed-in shopper, so their {@code buyerId} is null;
+     * {@code COUNT(DISTINCT)} discards nulls, which keeps every anonymous walk-in
+     * from collapsing into one phantom buyer.
+     */
+    @Query("SELECT COUNT(DISTINCT p.buyerId) FROM Purchase p WHERE p.status = :status")
+    long countDistinctBuyersByStatus(@Param("status") PurchaseStatus status);
+
     Page<Purchase> findByBuyerIdAndStatus(String buyerId, PurchaseStatus status, Pageable pageable);
 
     /**

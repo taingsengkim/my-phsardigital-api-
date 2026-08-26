@@ -9,6 +9,7 @@ import co.istad.projectpracticum.phsardigital.features.purchases.PurchaseReposit
 import co.istad.projectpracticum.phsardigital.features.purchases.PurchaseStatus;
 import co.istad.projectpracticum.phsardigital.features.seller.SellerRepository;
 import co.istad.projectpracticum.phsardigital.features.seller.application.ApplicationStatus;
+import co.istad.projectpracticum.phsardigital.features.seller.application.SellerApplicationDocumentRepository;
 import co.istad.projectpracticum.phsardigital.features.seller.application.SellerApplicationRepository;
 import co.istad.projectpracticum.phsardigital.features.subscription.SellerSubscriptionRepository;
 import co.istad.projectpracticum.phsardigital.features.subscription.SubscriptionPlan;
@@ -54,6 +55,8 @@ class AdminDashboardServiceImplTest {
     @Mock
     private SellerApplicationRepository applicationRepository;
     @Mock
+    private SellerApplicationDocumentRepository applicationDocumentRepository;
+    @Mock
     private PurchaseRepository purchaseRepository;
     @Mock
     private SellerSubscriptionRepository subscriptionRepository;
@@ -69,6 +72,7 @@ class AdminDashboardServiceImplTest {
                 new CategoryAvailability(),
                 listingRepository,
                 applicationRepository,
+                applicationDocumentRepository,
                 purchaseRepository,
                 subscriptionRepository,
                 Clock.fixed(NOW, ZONE));
@@ -87,7 +91,11 @@ class AdminDashboardServiceImplTest {
                 ListingStatus.ACTIVE, Set.of(publicCategory.getUuid())))
                 .thenReturn(87L);
         when(applicationRepository.countByStatus(ApplicationStatus.PENDING)).thenReturn(4L);
+        when(applicationDocumentRepository.countByApplicationStatus(ApplicationStatus.PENDING))
+                .thenReturn(7L);
         when(purchaseRepository.countByStatus(PurchaseStatus.COMPLETED)).thenReturn(31L);
+        when(purchaseRepository.countDistinctBuyersByStatus(PurchaseStatus.COMPLETED))
+                .thenReturn(23L);
         when(purchaseRepository.sumRoundedTotalPriceByStatus("COMPLETED"))
                 .thenReturn(new BigDecimal("1234.50"));
 
@@ -101,11 +109,13 @@ class AdminDashboardServiceImplTest {
         var result = service.getSummary();
 
         assertThat(result.users().total()).isEqualTo(41L);
+        assertThat(result.users().buyers()).isEqualTo(23L);
         assertThat(result.sellers().total()).isEqualTo(12L);
         assertThat(result.sellers().active()).isEqualTo(9L);
         assertThat(result.listings().total()).isEqualTo(125L);
         assertThat(result.listings().publiclyAvailable()).isEqualTo(87L);
         assertThat(result.applications().pending()).isEqualTo(4L);
+        assertThat(result.applications().pendingDocuments()).isEqualTo(7L);
         assertThat(result.orders().completed()).isEqualTo(31L);
         assertThat(result.orders().completedGmv().amount())
                 .isEqualByComparingTo("1234.50");

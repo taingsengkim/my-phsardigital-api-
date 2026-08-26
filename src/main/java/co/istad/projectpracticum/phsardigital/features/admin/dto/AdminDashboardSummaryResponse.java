@@ -1,10 +1,14 @@
 package co.istad.projectpracticum.phsardigital.features.admin.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -40,10 +44,100 @@ public record AdminDashboardSummaryResponse(
         Objects.requireNonNull(asOf, "asOf is required");
     }
 
-    /** Local user profiles provisioned in this application. */
-    public record UserSummary(long total) {
+    // ------------------------------------------------------------------
+    // Flat compatibility view.
+    //
+    // The admin dashboard client was written against the original flat
+    // response and reads one key per card. These derived properties
+    // republish the numbers above under those old names so the client keeps
+    // working; none of them is separate state, and none is read back on
+    // deserialization. Delete this block once the client reads the grouped
+    // fields — nothing on the server depends on it.
+    // ------------------------------------------------------------------
+
+    @JsonProperty(value = "totalUsers", access = JsonProperty.Access.READ_ONLY)
+    public long totalUsers() {
+        return users.total();
+    }
+
+    @JsonProperty(value = "totalBuyers", access = JsonProperty.Access.READ_ONLY)
+    public long totalBuyers() {
+        return users.buyers();
+    }
+
+    @JsonProperty(value = "totalSellers", access = JsonProperty.Access.READ_ONLY)
+    public long totalSellers() {
+        return sellers.total();
+    }
+
+    @JsonProperty(value = "activeSellers", access = JsonProperty.Access.READ_ONLY)
+    public long activeSellers() {
+        return sellers.active();
+    }
+
+    @JsonProperty(value = "totalListings", access = JsonProperty.Access.READ_ONLY)
+    public long totalListings() {
+        return listings.total();
+    }
+
+    @JsonProperty(value = "activeListings", access = JsonProperty.Access.READ_ONLY)
+    public long activeListings() {
+        return listings.publiclyAvailable();
+    }
+
+    @JsonProperty(value = "pendingApplications", access = JsonProperty.Access.READ_ONLY)
+    public long pendingApplications() {
+        return applications.pending();
+    }
+
+    @JsonProperty(value = "pendingDocuments", access = JsonProperty.Access.READ_ONLY)
+    public long pendingDocuments() {
+        return applications.pendingDocuments();
+    }
+
+    @JsonProperty(value = "totalTransactions", access = JsonProperty.Access.READ_ONLY)
+    public long totalTransactions() {
+        return orders.completed();
+    }
+
+    /**
+     * Published under the client's {@code totalRevenue} name, but the value is
+     * {@link PurchaseSummary#completedGmv()} — merchandise value that moved between
+     * buyers and sellers, not money the platform earned.
+     */
+    @JsonProperty(value = "totalRevenue", access = JsonProperty.Access.READ_ONLY)
+    public BigDecimal totalRevenue() {
+        return orders.completedGmv().amount();
+    }
+
+    @JsonProperty(value = "activeSubscriptions", access = JsonProperty.Access.READ_ONLY)
+    public long activeSubscriptions() {
+        return subscriptions.active();
+    }
+
+    /** The plan breakdown keyed by plan code, the shape the old client charts. */
+    @JsonProperty(value = "activeSubscriptionsByPlan", access = JsonProperty.Access.READ_ONLY)
+    public Map<String, Long> activeSubscriptionsByPlan() {
+        Map<String, Long> byCode = new LinkedHashMap<>();
+        for (PlanSubscriptionCount plan : subscriptions.byPlan()) {
+            byCode.put(plan.code(), plan.count());
+        }
+        return byCode;
+    }
+
+    /**
+     * Local user profiles provisioned in this application, and how many of them have
+     * actually bought something.
+     *
+     * <p>{@code buyers} is deliberately not bounded by {@code total}: it is counted
+     * from completed orders, and an order's buyer is a Keycloak subject that may have
+     * no local profile row yet. Treating that as a violation would fail the whole
+     * dashboard over a harmless data lag.
+     */
+    public record UserSummary(long total, long buyers) {
         public UserSummary {
             requireNonNegative(total, "users.total");
+            requireNonNegative(buyers, "users.buyers");
         }
     }
 
@@ -70,10 +164,15 @@ public record AdminDashboardSummaryResponse(
         }
     }
 
-    /** Seller applications currently waiting for an admin decision. */
-    public record ApplicationSummary(long pending) {
+    /**
+     * Seller applications currently waiting for an admin decision, and the documents
+     * uploaded against them. One application can carry several documents, so
+     * {@code pendingDocuments} is not bounded by {@code pending} either way.
+     */
+    public record ApplicationSummary(long pending, long pendingDocuments) {
         public ApplicationSummary {
             requireNonNegative(pending, "applications.pending");
+            requireNonNegative(pendingDocuments, "applications.pendingDocuments");
         }
     }
 
