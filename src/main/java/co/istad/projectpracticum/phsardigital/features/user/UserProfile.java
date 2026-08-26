@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "users")
@@ -96,6 +97,19 @@ public class UserProfile extends BasedEntity {
     @Enumerated(EnumType.STRING)
     @Column(length = 20)
     private UserStatus status = UserStatus.ACTIVE;
+
+    // Who last changed the standing above and why. Kept on the profile rather than
+    // inferred from the status, because a restored account keeps no trace otherwise —
+    // and "why was this account banned last year" is exactly what an admin asks.
+
+    @Column(name = "moderated_by")
+    private String moderatedBy;
+
+    @Column(name = "moderated_at")
+    private LocalDateTime moderatedAt;
+
+    @Column(name = "moderation_reason", columnDefinition = "TEXT")
+    private String moderationReason;
 
     /**
      * Recomputes {@link #fullName} from the current name parts.

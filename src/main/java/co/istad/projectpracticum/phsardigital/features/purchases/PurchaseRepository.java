@@ -48,6 +48,28 @@ public interface PurchaseRepository extends JpaRepository<Purchase, UUID> {
     @Query("SELECT COUNT(DISTINCT p.buyerId) FROM Purchase p WHERE p.status = :status")
     long countDistinctBuyersByStatus(@Param("status") PurchaseStatus status);
 
+    /**
+     * Order count and lifetime spend for a page of buyers — one query for the whole
+     * page rather than two per row.
+     *
+     * <p>Native and cent-cast for the same reason as
+     * {@link #sumRoundedTotalPriceByStatus}: the underlying money column is floating
+     * point, and a buyer's total is not something to report with binary drift in it.
+     *
+     * @return {@code [buyerId, orderCount, totalSpent]}; a buyer with no qualifying
+     *         order is absent rather than returned as a zero row
+     */
+    @Query(value = """
+            SELECT buyer_id,
+                   COUNT(*),
+                   COALESCE(SUM(CAST(total_price AS numeric(19, 2))), CAST(0 AS numeric(19, 2)))
+            FROM purchases
+            WHERE status = :status AND buyer_id IN (:buyerIds)
+            GROUP BY buyer_id
+            """, nativeQuery = true)
+    List<Object[]> orderStatsForBuyers(@Param("status") String status,
+                                       @Param("buyerIds") Collection<String> buyerIds);
+
     Page<Purchase> findByBuyerIdAndStatus(String buyerId, PurchaseStatus status, Pageable pageable);
 
     /**
