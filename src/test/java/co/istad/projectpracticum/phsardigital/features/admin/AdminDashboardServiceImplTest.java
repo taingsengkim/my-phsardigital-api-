@@ -13,6 +13,7 @@ import co.istad.projectpracticum.phsardigital.features.seller.application.Seller
 import co.istad.projectpracticum.phsardigital.features.seller.application.SellerApplicationRepository;
 import co.istad.projectpracticum.phsardigital.features.subscription.SellerSubscriptionRepository;
 import co.istad.projectpracticum.phsardigital.features.subscription.SubscriptionPlan;
+import co.istad.projectpracticum.phsardigital.features.subscription.SubscriptionPlanRepository;
 import co.istad.projectpracticum.phsardigital.features.subscription.SubscriptionStatus;
 import co.istad.projectpracticum.phsardigital.features.user.UserProfileRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -60,6 +61,8 @@ class AdminDashboardServiceImplTest {
     private PurchaseRepository purchaseRepository;
     @Mock
     private SellerSubscriptionRepository subscriptionRepository;
+    @Mock
+    private SubscriptionPlanRepository planRepository;
 
     private AdminDashboardServiceImpl service;
 
@@ -75,6 +78,7 @@ class AdminDashboardServiceImplTest {
                 applicationDocumentRepository,
                 purchaseRepository,
                 subscriptionRepository,
+                planRepository,
                 Clock.fixed(NOW, ZONE));
     }
 
@@ -100,11 +104,12 @@ class AdminDashboardServiceImplTest {
                 .thenReturn(new BigDecimal("1234.50"));
 
         LocalDateTime expectedEvaluationTime = LocalDateTime.ofInstant(NOW, ZONE);
+        when(planRepository.findAllByOrderBySortOrderAsc()).thenReturn(catalogue());
         when(subscriptionRepository.countActiveByPlan(
                 SubscriptionStatus.ACTIVE, expectedEvaluationTime))
                 .thenReturn(List.of(
-                        new Object[]{SubscriptionPlan.BASIC, 2L},
-                        new Object[]{SubscriptionPlan.PREMIUM, 1L}));
+                        new Object[]{"BASIC", 2L},
+                        new Object[]{"PREMIUM", 1L}));
 
         var result = service.getSummary();
 
@@ -167,6 +172,7 @@ class AdminDashboardServiceImplTest {
     void returnsZeroGmvAndEveryPlanWhenThereIsNoActivity() {
         when(categoryRepository.findAllByIsDeletedFalseAndIsActiveTrue(Sort.unsorted()))
                 .thenReturn(List.of());
+        when(planRepository.findAllByOrderBySortOrderAsc()).thenReturn(catalogue());
         when(subscriptionRepository.countActiveByPlan(
                 SubscriptionStatus.ACTIVE, LocalDateTime.ofInstant(NOW, ZONE)))
                 .thenReturn(List.of());
@@ -186,6 +192,20 @@ class AdminDashboardServiceImplTest {
                         tuple("PREMIUM", 0L));
         verify(listingRepository, never())
                 .countBuyableByStatusInCategories(any(), any());
+    }
+
+    /** The seeded catalogue, in pricing-page order. */
+    private static List<SubscriptionPlan> catalogue() {
+        return List.of(
+                plan("BASIC", "Basic"),
+                plan("STANDARD", "Standard"),
+                plan("PREMIUM", "Premium"));
+    }
+
+    private static SubscriptionPlan plan(String code, String displayName) {
+        SubscriptionPlan plan = new SubscriptionPlan(code);
+        plan.setDisplayName(displayName);
+        return plan;
     }
 
     private static Category category(boolean active, boolean deleted, Category parent) {

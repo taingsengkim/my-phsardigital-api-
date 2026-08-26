@@ -32,9 +32,14 @@ public class SellerSubscription extends BasedEntity {
     @Column(name = "seller_id")
     private String sellerId;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 30)
-    private SubscriptionPlan plan;
+    /**
+     * The plan's {@link SubscriptionPlan#getCode() code}, held as the string it always
+     * was rather than as a foreign key. The catalogue moved into a table without this
+     * column changing, and without a constraint that could fail on a database whose
+     * plans have not been seeded yet.
+     */
+    @Column(name = "plan", nullable = false, length = 30)
+    private String planCode;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)

@@ -1,6 +1,5 @@
 package co.istad.projectpracticum.phsardigital.features.subscription.dto;
 
-import co.istad.projectpracticum.phsardigital.features.subscription.SubscriptionPlan;
 import co.istad.projectpracticum.phsardigital.features.subscription.SubscriptionStatus;
 
 import java.time.LocalDateTime;
@@ -16,7 +15,7 @@ import java.time.LocalDateTime;
  */
 public record SellerSubscriptionResponse(
         String sellerId,
-        SubscriptionPlan plan,
+        String planCode,
         String planDisplayName,
         SubscriptionStatus status,
         LocalDateTime startedAt,

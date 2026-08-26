@@ -1,55 +1,68 @@
 package co.istad.projectpracticum.phsardigital.features.subscription;
 
+import co.istad.projectpracticum.phsardigital.config.config.BasedEntity;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
 import java.math.BigDecimal;
 
 /**
- * The plans a seller can be on, and what each one allows.
+ * A plan a seller can be on, and what it allows.
  *
- * <p>Deliberately static: there is no billing integration yet, so the catalogue
- * lives in code rather than in a table an admin edits. What matters is that the
- * <em>gate</em> is real — {@code SubscriptionService} refuses to let an
- * unsubscribed seller post or chat — so swapping this enum for a payment provider
- * later is a change to how a subscription is granted, not to who is allowed to do
- * what.
+ * <p>Was an enum in code. It is a table now so an admin can change a price or a
+ * listing cap without a redeploy — but {@link #code} is still the identity, and
+ * {@code seller_subscriptions.plan} still stores that code as a plain string. That is
+ * deliberate: the existing column keeps its existing values, so moving the catalogue
+ * into the database needed no data migration and no foreign key.
+ *
+ * <p>Plans are never hard-deleted, because historical subscriptions name them.
+ * {@link #active} takes a plan off the pricing page while leaving it resolvable for
+ * everyone already on it.
  */
-public enum SubscriptionPlan {
-
-    BASIC("Basic", new BigDecimal("5.00"), 30, 20),
-    STANDARD("Standard", new BigDecimal("12.00"), 30, 100),
-    // -1 spelled out rather than UNLIMITED_LISTINGS: an enum constant's arguments
-    // cannot forward-reference a field declared below it.
-    PREMIUM("Premium", new BigDecimal("25.00"), 30, -1);
+@Entity
+@Table(name = "subscription_plans")
+@Getter
+@Setter
+@NoArgsConstructor
+public class SubscriptionPlan extends BasedEntity {
 
     /** Sentinel for {@link #listingLimit}: no cap on how many listings a shop keeps. */
     public static final int UNLIMITED_LISTINGS = -1;
 
-    private final String displayName;
-    private final BigDecimal priceUsd;
-    private final int durationDays;
-    private final int listingLimit;
-
-    SubscriptionPlan(String displayName, BigDecimal priceUsd, int durationDays, int listingLimit) {
-        this.displayName = displayName;
-        this.priceUsd = priceUsd;
-        this.durationDays = durationDays;
-        this.listingLimit = listingLimit;
+    public SubscriptionPlan(String code) {
+        this.code = code;
     }
 
-    public String getDisplayName() {
-        return displayName;
-    }
+    /** Stable identifier, e.g. {@code BASIC}. Never renamed — subscriptions store it. */
+    @Id
+    @Column(length = 30)
+    private String code;
 
-    public BigDecimal getPriceUsd() {
-        return priceUsd;
-    }
+    @Column(name = "display_name", nullable = false, length = 100)
+    private String displayName;
 
-    public int getDurationDays() {
-        return durationDays;
-    }
+    @Column(name = "price_usd", nullable = false, precision = 10, scale = 2)
+    private BigDecimal priceUsd;
 
-    public int getListingLimit() {
-        return listingLimit;
-    }
+    @Column(name = "duration_days", nullable = false)
+    private int durationDays;
+
+    /** {@link #UNLIMITED_LISTINGS} for no cap. */
+    @Column(name = "listing_limit", nullable = false)
+    private int listingLimit;
+
+    /** Whether the plan is offered to new subscribers. */
+    @Column(name = "is_active", nullable = false)
+    private boolean active = true;
+
+    /** Where the plan sits on the pricing page, cheapest first by convention. */
+    @Column(name = "sort_order", nullable = false)
+    private int sortOrder;
 
     public boolean hasUnlimitedListings() {
         return listingLimit == UNLIMITED_LISTINGS;
@@ -61,5 +74,10 @@ public enum SubscriptionPlan {
      */
     public boolean allowsAnotherListing(long currentListings) {
         return hasUnlimitedListings() || currentListings < listingLimit;
+    }
+
+    /** Null rather than the sentinel, so clients render "Unlimited" without knowing it. */
+    public Integer listingLimitOrNull() {
+        return hasUnlimitedListings() ? null : listingLimit;
     }
 }

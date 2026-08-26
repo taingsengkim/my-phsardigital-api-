@@ -15,7 +15,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
@@ -31,18 +30,15 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     private static final ListingStatus UNCOUNTED_STATUS = ListingStatus.ARCHIVED;
 
     private final SellerSubscriptionRepository subscriptionRepository;
+    private final SubscriptionPlanRepository planRepository;
     private final ListingRepository listingRepository;
     private final SellerAccessGuard sellerAccessGuard;
 
     @Override
+    @Transactional(readOnly = true)
     public List<SubscriptionPlanResponse> listPlans() {
-        return Arrays.stream(SubscriptionPlan.values())
-                .map(plan -> new SubscriptionPlanResponse(
-                        plan,
-                        plan.getDisplayName(),
-                        plan.getPriceUsd(),
-                        plan.getDurationDays(),
-                        plan.hasUnlimitedListings() ? null : plan.getListingLimit()))
+        return planRepository.findAllByActiveTrueOrderBySortOrderAsc().stream()
+                .map(SubscriptionPlanResponse::of)
                 .toList();
     }
 
@@ -64,6 +60,18 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         // A suspended shop must not be able to buy its way back in.
         sellerAccessGuard.requireActiveSeller(sellerId);
 
+        // The code came from the caller, so an unknown one is their mistake, not a
+        // broken catalogue — 404 rather than the 500 requirePlan answers with.
+        SubscriptionPlan plan = planRepository.findById(request.planCode())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Unknown plan '" + request.planCode()
+                                + "'. See GET /api/v1/subscriptions/plans."));
+        // A retired plan is not on offer, even to somebody who knows its code.
+        if (!plan.isActive()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "The " + plan.getDisplayName() + " plan is no longer offered.");
+        }
+
         SellerSubscription subscription = subscriptionRepository.findById(sellerId)
                 .orElseGet(() -> new SellerSubscription(sellerId));
 
@@ -72,10 +80,10 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         // mid-period does not silently forfeit the days already paid for.
         LocalDateTime base = subscription.isCurrentlyActive() ? subscription.getExpiresAt() : now;
 
-        subscription.setPlan(request.plan());
+        subscription.setPlanCode(plan.getCode());
         subscription.setStatus(SubscriptionStatus.ACTIVE);
         subscription.setStartedAt(subscription.getStartedAt() == null ? now : subscription.getStartedAt());
-        subscription.setExpiresAt(base.plusDays(request.plan().getDurationDays()));
+        subscription.setExpiresAt(base.plusDays(plan.getDurationDays()));
 
         return toResponse(subscriptionRepository.save(subscription));
     }
@@ -86,11 +94,12 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         SellerSubscription subscription = requireActiveSubscription(sellerId,
                 "A subscription is required to publish listings.");
 
+        SubscriptionPlan plan = requirePlan(subscription.getPlanCode());
         long used = countListings(sellerId);
-        if (!subscription.getPlan().allowsAnotherListing(used)) {
+        if (!plan.allowsAnotherListing(used)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Your " + subscription.getPlan().getDisplayName() + " plan allows "
-                            + subscription.getPlan().getListingLimit() + " listings and you have "
+                    "Your " + plan.getDisplayName() + " plan allows "
+                            + plan.getListingLimit() + " listings and you have "
                             + used + ". Archive a listing or move to a larger plan.");
         }
     }
@@ -145,20 +154,32 @@ public class SubscriptionServiceImpl implements SubscriptionService {
         return listingRepository.countBySellerProfile_SellerIdAndStatusNot(sellerId, UNCOUNTED_STATUS);
     }
 
+    /**
+     * A subscription names its plan by code. The catalogue never deletes a plan, so a
+     * code with no row behind it means the table was tampered with rather than that
+     * the seller did anything wrong — hence 500, not 404 or 402.
+     */
+    private SubscriptionPlan requirePlan(String planCode) {
+        return planRepository.findById(planCode)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.INTERNAL_SERVER_ERROR,
+                        "Subscription plan '" + planCode + "' is missing from the catalogue."));
+    }
+
     private SellerSubscriptionResponse toResponse(SellerSubscription subscription) {
-        SubscriptionPlan plan = subscription.getPlan();
+        SubscriptionPlan plan = requirePlan(subscription.getPlanCode());
         long used = countListings(subscription.getSellerId());
         boolean active = subscription.isCurrentlyActive();
 
         return new SellerSubscriptionResponse(
                 subscription.getSellerId(),
-                plan,
+                plan.getCode(),
                 plan.getDisplayName(),
                 subscription.getStatus(),
                 subscription.getStartedAt(),
                 subscription.getExpiresAt(),
                 used,
-                plan.hasUnlimitedListings() ? null : plan.getListingLimit(),
+                plan.listingLimitOrNull(),
                 active && plan.allowsAnotherListing(used),
                 active
         );

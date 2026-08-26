@@ -14,6 +14,7 @@ import co.istad.projectpracticum.phsardigital.features.seller.application.Seller
 import co.istad.projectpracticum.phsardigital.features.seller.application.SellerApplicationRepository;
 import co.istad.projectpracticum.phsardigital.features.subscription.SellerSubscriptionRepository;
 import co.istad.projectpracticum.phsardigital.features.subscription.SubscriptionPlan;
+import co.istad.projectpracticum.phsardigital.features.subscription.SubscriptionPlanRepository;
 import co.istad.projectpracticum.phsardigital.features.subscription.SubscriptionStatus;
 import co.istad.projectpracticum.phsardigital.features.user.UserProfileRepository;
 import lombok.RequiredArgsConstructor;
@@ -26,8 +27,8 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.util.Arrays;
-import java.util.EnumMap;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -61,6 +62,7 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
     private final SellerApplicationDocumentRepository applicationDocumentRepository;
     private final PurchaseRepository purchaseRepository;
     private final SellerSubscriptionRepository subscriptionRepository;
+    private final SubscriptionPlanRepository planRepository;
     private final Clock clock;
 
     /**
@@ -121,27 +123,35 @@ public class AdminDashboardServiceImpl implements AdminDashboardService {
     }
 
     /**
-     * Seeded with every plan, so one dropping to zero subscribers stays in the
-     * response instead of disappearing from the chart.
+     * Seeded from the whole catalogue, so a plan dropping to zero subscribers stays in
+     * the response instead of disappearing from the chart. Retired plans are included
+     * too: somebody may still be inside a period on one.
+     *
+     * <p>A counted code with no catalogue row is appended rather than dropped. The
+     * response contract requires the breakdown to sum to the active total, so silently
+     * discarding an unknown code would fail the whole dashboard instead of showing the
+     * one row that needs attention.
      */
     private List<PlanSubscriptionCount> activeSubscriptionsByPlan(LocalDateTime now) {
-        Map<SubscriptionPlan, Long> counts = new EnumMap<>(SubscriptionPlan.class);
-        for (SubscriptionPlan plan : SubscriptionPlan.values()) {
-            counts.put(plan, 0L);
+        Map<String, Long> counts = new LinkedHashMap<>();
+        for (Object[] row : subscriptionRepository.countActiveByPlan(
+                SubscriptionStatus.ACTIVE, now)) {
+            counts.put((String) row[0], ((Number) row[1]).longValue());
         }
 
-        List<Object[]> rows = subscriptionRepository.countActiveByPlan(
-                SubscriptionStatus.ACTIVE, now);
-        for (Object[] row : rows) {
-            counts.put((SubscriptionPlan) row[0], ((Number) row[1]).longValue());
+        List<PlanSubscriptionCount> breakdown = new ArrayList<>();
+        for (SubscriptionPlan plan : planRepository.findAllByOrderBySortOrderAsc()) {
+            Long counted = counts.remove(plan.getCode());
+            breakdown.add(new PlanSubscriptionCount(
+                    plan.getCode(),
+                    plan.getDisplayName(),
+                    counted == null ? 0L : counted));
         }
 
-        return Arrays.stream(SubscriptionPlan.values())
-                .map(plan -> new PlanSubscriptionCount(
-                        plan.name(),
-                        plan.getDisplayName(),
-                        counts.get(plan)))
-                .toList();
+        // Whatever the catalogue could not explain, labelled by its bare code.
+        counts.forEach((code, count) ->
+                breakdown.add(new PlanSubscriptionCount(code, code, count)));
+        return breakdown;
     }
 
     /**
