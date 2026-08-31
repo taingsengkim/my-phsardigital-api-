@@ -65,8 +65,14 @@ public class Payment extends BasedEntity {
      * the shop that made it. Settlement checks the transfer landed <em>here</em>, so the
      * account a payment was drawn on cannot drift after the QR was issued — which it
      * would if the check read today's configuration, or today's shop profile.
+     *
+     * <p>Always set on a payment opened since this column existed, but deliberately
+     * <em>not</em> declared {@code NOT NULL}: schema updates cannot add a non-null column
+     * to a table that already has rows, so declaring it so meant the column was never
+     * created at all and every payment failed. Rows predating it are subscriptions and
+     * read as the platform's own account — see {@code PaymentSettler}.
      */
-    @Column(name = "collecting_account_id", nullable = false, length = 32)
+    @Column(name = "collecting_account_id", length = 32)
     private String collectingAccountId;
 
     /**

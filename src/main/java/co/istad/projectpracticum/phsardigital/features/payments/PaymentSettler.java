@@ -142,7 +142,11 @@ class PaymentSettler {
     private void requireTransactionMatches(Payment payment, BakongTransaction transaction) {
         // The account recorded on the payment, not the one in configuration: a counter
         // sale collects into the shop's own account, and only the payment knows which.
-        String expectedAccount = payment.getCollectingAccountId();
+        // A payment opened before that column existed can only be a subscription, which
+        // the platform collected, so its account is the configured one.
+        String expectedAccount = payment.getCollectingAccountId() == null
+                ? props.getAccountId()
+                : payment.getCollectingAccountId();
         if (transaction.toAccountId() != null
                 && !transaction.toAccountId().equalsIgnoreCase(expectedAccount)) {
             log.error("Payment {} matched a transfer to {} but was drawn on {}",

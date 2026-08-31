@@ -26,6 +26,7 @@ class PaymentSettlerTest {
     private PaymentRepository paymentRepository;
     private RecordingSettlement settlement;
     private PaymentSettler settler;
+    private BakongProps props;
 
     @BeforeEach
     void setUp() {
@@ -35,6 +36,7 @@ class PaymentSettlerTest {
 
         BakongProps props = new BakongProps();
         props.setAccountId(MERCHANT_ACCOUNT);
+        this.props = props;
 
         settlement = new RecordingSettlement();
         settler = new PaymentSettler(paymentRepository, props, List.of(settlement));
@@ -122,6 +124,20 @@ class PaymentSettlerTest {
         assertThat(settler.settle(payment.getUuid(), sparse).getStatus())
                 .isEqualTo(PaymentStatus.PAID);
         assertThat(settlement.settled).containsExactly(payment.getUuid());
+    }
+
+    @Test
+    void aPaymentFromBeforeTheAccountColumnExistedSettlesAgainstThePlatformAccount() {
+        // Those rows can only be subscriptions, which the platform collected. Reading
+        // their null account as "matches nothing" would refuse money already paid.
+        Payment legacy = pending(new BigDecimal("12.50"));
+        legacy.setCollectingAccountId(null);
+        given(legacy);
+
+        Payment settled = settler.settle(legacy.getUuid(), paidWith(new BigDecimal("12.50")));
+
+        assertThat(settled.getStatus()).isEqualTo(PaymentStatus.PAID);
+        assertThat(settlement.settled).containsExactly(legacy.getUuid());
     }
 
     @Test
