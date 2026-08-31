@@ -54,6 +54,24 @@ public class Listing extends BasedEntity {
     @Column(length = 64)
     private String sku;
 
+    /**
+     * What the shop paid for one unit — the "price in" against which the selling price
+     * is the "price out".
+     *
+     * <p><strong>Never leaves the shop that owns it.</strong> A competitor who knows a
+     * rival's cost knows exactly how far they can undercut them, so this is the one
+     * field on a listing that must not reach a public response. {@code ListingMapper}
+     * refuses to map it and {@code ListingResponseFactory} fills it only for the owner —
+     * see the note on {@code ListingResponse#costPrice} for why it is arranged that way
+     * round rather than trusted to every call site.
+     *
+     * <p>Optional, and deliberately unconstrained against the selling price: shops do
+     * clear stock at a loss, and a validation forbidding it would be wrong more often
+     * than it was useful.
+     */
+    @Column(name = "cost_price", precision = 12, scale = 2)
+    private BigDecimal costPrice;
+
     @Column(nullable = false, columnDefinition = "TEXT")
     private String description;
 

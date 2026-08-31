@@ -34,6 +34,9 @@ public record UpdateListingRequest(
         /* Blank clears the code; null leaves it as it was. */
         @Size(max = 64, message = "SKU must not exceed 64 characters")
         String sku,
+
+        @DecimalMin(value = "0.0", inclusive = true, message = "Cost price must not be negative")
+        BigDecimal costPrice,
         @JsonAlias("price")
         @DecimalMin(value = "0.0", inclusive = true, message = "Price must not be negative")
         BigDecimal fullPrice,

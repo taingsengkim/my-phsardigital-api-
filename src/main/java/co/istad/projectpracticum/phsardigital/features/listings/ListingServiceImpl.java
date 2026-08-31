@@ -3,6 +3,7 @@ package co.istad.projectpracticum.phsardigital.features.listings;
 import java.math.BigDecimal;
 import co.istad.projectpracticum.phsardigital.config.config.Utils;
 import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
+import co.istad.projectpracticum.phsardigital.core.money.Money;
 import co.istad.projectpracticum.phsardigital.features.categories.Category;
 import co.istad.projectpracticum.phsardigital.features.categories.CategoryAvailability;
 import co.istad.projectpracticum.phsardigital.features.categories.CategoryRepository;
@@ -313,6 +314,7 @@ public class ListingServiceImpl implements ListingService{
         listing.setSlug(slug);
         listing.setDescription(request.description());
         listing.setSku(requireFreeSku(request.sku(), sellerId, null));
+        listing.setCostPrice(Money.of(request.costPrice()));
         listing.setFullPrice(request.fullPrice());
         listing.setDiscountPrice(request.discountPrice());
         listing.setStockQty(request.stockQty());
@@ -366,6 +368,9 @@ public class ListingServiceImpl implements ListingService{
             // Blank clears the code rather than being rejected: a seller who mistypes one
             // needs a way to take it off, and an empty string is how a form sends that.
             listing.setSku(requireFreeSku(request.sku(), currentSellerId, listing.getUuid()));
+        }
+        if (request.costPrice() != null) {
+            listing.setCostPrice(Money.of(request.costPrice()));
         }
         // Checked against the state the listing ends up in, so dropping the list price
         // under a discount that was already there is caught too.

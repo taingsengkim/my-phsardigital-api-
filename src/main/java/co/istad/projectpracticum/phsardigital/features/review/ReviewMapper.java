@@ -1,5 +1,6 @@
 package co.istad.projectpracticum.phsardigital.features.review;
 
+import co.istad.projectpracticum.phsardigital.features.listings.ListingMapper;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_attributes.ListingAttributeMapper;
 import co.istad.projectpracticum.phsardigital.features.review.dto.ReviewAuthorResponse;
 import co.istad.projectpracticum.phsardigital.features.review.dto.ReviewResponse;
@@ -16,11 +17,18 @@ import org.springframework.beans.factory.annotation.Autowired;
  * (it comes from {@code sellerId}) or the logo URL (it needs the file service), so
  * every review answered a shop with a null id and no logo.
  *
+ * <p>{@link ListingMapper} is delegated to rather than letting MapStruct derive a second
+ * {@code Listing -> ListingResponse} mapping of its own. That derived version copied
+ * every matching field, which is exactly how a shop's buying price would have reached
+ * a review anybody can read: the rule that cost price is never mapped lives on
+ * {@code ListingMapper}, and only delegation makes it apply here too.
+ *
  * <p>{@link ListingAttributeMapper} is delegated to for the same reason: a spec's label,
  * unit and group are read off the category's definition of it, which a derived mapping
  * cannot reach — so the reviewed product's specs came back as bare key/value pairs.
  */
-@Mapper(componentModel = "spring", uses = {SellerProfileMapper.class, ListingAttributeMapper.class})
+@Mapper(componentModel = "spring", uses = {SellerProfileMapper.class, ListingAttributeMapper.class,
+        ListingMapper.class})
 public abstract class ReviewMapper {
 
     @Autowired

@@ -31,6 +31,7 @@ public record ListingResponse(
         String slug,
         String description,
         String sku,
+        BigDecimal costPrice,
         BigDecimal fullPrice,
         BigDecimal discountPrice,
         Integer stockQty,
@@ -56,9 +57,26 @@ public record ListingResponse(
      * as it does on {@code SellerProfileResponse}; the listing's own routes fill them in
      * through {@code ListingResponseFactory}.
      */
+    /**
+     * The same listing with its cost price disclosed.
+     *
+     * <p>The field is left out of the mapping entirely and added back here, rather than
+     * mapped and stripped for strangers. The difference matters: mapped-and-stripped
+     * fails open, so the day somebody adds a route that forgets to strip it, every
+     * shop's margins are published. This way a forgotten route returns null, which is
+     * merely a missing number.
+     */
+    public ListingResponse withCostPrice(BigDecimal costPrice) {
+        return new ListingResponse(
+                uuid, sellerProfile, category, title, slug, description, sku, costPrice,
+                fullPrice, discountPrice, stockQty,
+                status, isFeatured, thumbnailUri, sold, images, listingAttributes, specifications,
+                createdAt, lastModifiedAt, averageRating, reviewCount, isFavorite);
+    }
+
     public ListingResponse withRating(Double averageRating, Long reviewCount, Boolean isFavorite) {
         return new ListingResponse(
-                uuid, sellerProfile, category, title, slug, description, sku,
+                uuid, sellerProfile, category, title, slug, description, sku, costPrice,
                 fullPrice, discountPrice, stockQty,
                 status, isFeatured, thumbnailUri, sold, images, listingAttributes, specifications,
                 createdAt, lastModifiedAt, averageRating, reviewCount, isFavorite);

@@ -40,4 +40,19 @@ public class PurchaseItem {
      */
     @Column(name = "unit_full_price", precision = 12, scale = 2)
     private BigDecimal unitFullPrice;
+
+    /**
+     * What the unit cost the shop, frozen at the moment of sale alongside the two prices
+     * above.
+     *
+     * <p>Snapshotted for the same reason they are, and it matters more here: restocking
+     * at a new price would otherwise rewrite the profit on every sale already made, and
+     * a shop's history of what it earned would change every time it bought more stock.
+     *
+     * <p>Null when the listing had no cost recorded, and on every sale made before this
+     * existed — so a profit figure has to be reported over the lines that have it rather
+     * than assuming zero, which would read as pure profit.
+     */
+    @Column(name = "unit_cost", precision = 12, scale = 2)
+    private BigDecimal unitCost;
 }

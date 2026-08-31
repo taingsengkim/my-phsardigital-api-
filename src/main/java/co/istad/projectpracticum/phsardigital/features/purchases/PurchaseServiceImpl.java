@@ -141,6 +141,7 @@ public class PurchaseServiceImpl implements PurchaseService {
             item.setQuantity(cartItem.getQuantity());
             item.setUnitPrice(Money.of(unitPrice));
             item.setUnitFullPrice(Money.of(listing.getFullPrice()));
+            item.setUnitCost(Money.of(listing.getCostPrice()));
             purchase.getItems().add(item);
 
             total = Money.add(total, Money.multiply(unitPrice, cartItem.getQuantity()));

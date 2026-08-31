@@ -36,6 +36,13 @@ public abstract class ListingMapper {
 
     @Mapping(target = "thumbnailUri", source = "listing")
     @Mapping(target = "specifications", expression = "java(specifications(listing))")
+    /*
+     * Cost price is never mapped. It is the shop's buying price, and a competitor who
+     * knows it knows exactly how far they can undercut them — so the default for every
+     * route, present and future, is that it is absent. ListingResponseFactory adds it
+     * back for the owner alone via withCostPrice.
+     */
+    @Mapping(target = "costPrice", ignore = true)
     public abstract ListingResponse toResponse(Listing listing);
 
     /**

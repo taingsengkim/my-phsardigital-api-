@@ -30,6 +30,9 @@ public record ListingCreateRequest(
         @Size(max = 64, message = "SKU must not exceed 64 characters")
         String sku,
 
+        @DecimalMin(value = "0.0", inclusive = true, message = "Cost price must not be negative")
+        BigDecimal costPrice,
+
         @JsonAlias("price")
         @NotNull(message = "Price must not be null")
         @DecimalMin(value = "0.0", inclusive = true, message = "Price must not be negative")

@@ -78,6 +78,7 @@ public class PosServiceImpl implements PosService {
             item.setQuantity(line.quantity());
             item.setUnitPrice(unitPrice);
             item.setUnitFullPrice(Money.of(listing.getFullPrice()));
+            item.setUnitCost(Money.of(listing.getCostPrice()));
             sale.getItems().add(item);
 
             total = Money.add(total, Money.multiply(unitPrice, line.quantity()));

@@ -29,10 +29,10 @@ public class ListingResponseFactory {
     private final FavoriteRepository favoriteRepository;
 
     public ListingResponse one(Listing listing) {
-        return listingMapper.toResponse(listing).withRating(
+        return disclose(listingMapper.toResponse(listing).withRating(
                 round(reviewRepository.averageRatingForListing(listing.getUuid())),
                 reviewRepository.countByListing_Uuid(listing.getUuid()),
-                favouritedAmong(List.of(listing.getUuid())).contains(listing.getUuid()));
+                favouritedAmong(List.of(listing.getUuid())).contains(listing.getUuid())), listing);
     }
 
     public Page<ListingResponse> page(Page<Listing> listings) {
@@ -50,10 +50,30 @@ public class ListingResponseFactory {
     private ListingResponse attach(Listing listing, Map<UUID, Rating> ratings, Set<UUID> favourited) {
         // Absent means nobody has reviewed it: no average at all, and a count of zero.
         Rating rating = ratings.get(listing.getUuid());
-        return listingMapper.toResponse(listing).withRating(
+        return disclose(listingMapper.toResponse(listing).withRating(
                 rating == null ? null : round(rating.average()),
                 rating == null ? 0L : rating.count(),
-                favourited.contains(listing.getUuid()));
+                favourited.contains(listing.getUuid())), listing);
+    }
+
+    /**
+     * Adds the buying price back, for the shop that owns the listing and nobody else.
+     *
+     * <p>The mapper never sets it, so every other reader — a shopper browsing, a
+     * reviewer, another seller, an anonymous visitor — gets null without anything
+     * having to remember to remove it. Admins see it because moderating a shop means
+     * being able to see what it recorded.
+     */
+    private ListingResponse disclose(ListingResponse response, Listing listing) {
+        if (listing.getCostPrice() == null || !AuthUtils.isAuthenticated()) {
+            return response;
+        }
+        boolean owner = listing.getSellerProfile() != null
+                && AuthUtils.extractUserId().equals(listing.getSellerProfile().getSellerId());
+        if (owner || AuthUtils.hasRole("ADMIN")) {
+            return response.withCostPrice(listing.getCostPrice());
+        }
+        return response;
     }
 
     /**
