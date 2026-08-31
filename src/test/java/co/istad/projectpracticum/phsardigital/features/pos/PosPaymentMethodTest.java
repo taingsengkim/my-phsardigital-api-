@@ -52,6 +52,7 @@ class PosPaymentMethodTest {
     @Mock private StockLedger stockLedger;
     @Mock private EntityManager entityManager;
     @Mock private co.istad.projectpracticum.phsardigital.features.payments.PaymentService paymentService;
+    @Mock private co.istad.projectpracticum.phsardigital.features.seller.SellerRepository sellerRepository;
 
     private PosServiceImpl service;
     private UUID listingUuid;
@@ -59,7 +60,7 @@ class PosPaymentMethodTest {
     @BeforeEach
     void setUp() {
         service = new PosServiceImpl(purchaseRepository, listingRepository, purchaseMapper,
-                sellerAccessGuard, stockLedger, entityManager, paymentService);
+                sellerAccessGuard, stockLedger, entityManager, paymentService, sellerRepository);
 
         SellerProfile seller = new SellerProfile(SELLER_ID);
         seller.setIsActive(true);
@@ -80,6 +81,18 @@ class PosPaymentMethodTest {
         when(listingRepository.findByUuidForUpdate(listingUuid)).thenReturn(Optional.of(listing));
         when(purchaseRepository.findById(any(UUID.class))).thenReturn(Optional.empty());
         when(purchaseRepository.save(any(Purchase.class))).thenAnswer(c -> c.getArgument(0));
+    }
+
+    @Test
+    void theTillIsSerializedBeforeTheSaleIsLookedFor() {
+        // Recognising a resend is a read then an insert; without the lock between them,
+        // a double-tapped Complete Sale inserts the same sale twice and the loser dies
+        // on a primary key violation.
+        sell(request(PaymentMethod.CASH, new BigDecimal("5.00")));
+
+        var order = org.mockito.Mockito.inOrder(sellerRepository, purchaseRepository);
+        order.verify(sellerRepository).findByIdForUpdate(SELLER_ID);
+        order.verify(purchaseRepository).findById(any(UUID.class));
     }
 
     @Test

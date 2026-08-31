@@ -41,11 +41,21 @@ public class PosServiceImpl implements PosService {
     private final StockLedger stockLedger;
     private final EntityManager entityManager;
     private final PaymentService paymentService;
+    private final co.istad.projectpracticum.phsardigital.features.seller.SellerRepository sellerRepository;
 
     @Override
     @Transactional
     public PosSaleResponse sell(PosSaleRequest request) {
         String sellerId = AuthUtils.extractUserId();
+
+        // Serialize the till before looking for the sale. Recognising a resend is a read
+        // followed by an insert, and without a lock between them two submissions a
+        // moment apart — a double-tapped button, or a retry sent while the first is
+        // still in flight — both see no sale and both insert one. The loser hit a
+        // primary key violation, which surfaced as a bare 409 the cashier could make no
+        // sense of. One counter rings up one sale at a time regardless, so the lock
+        // costs nothing real.
+        sellerRepository.findByIdForUpdate(sellerId);
 
         // A till that lost its connection resends the same sale. Answering with the
         // original is the whole point of letting it choose the id.
