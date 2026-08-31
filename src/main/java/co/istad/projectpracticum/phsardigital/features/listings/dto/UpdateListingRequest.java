@@ -7,6 +7,7 @@ import com.fasterxml.jackson.annotation.JsonAlias;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.PositiveOrZero;
+import jakarta.validation.constraints.Size;
 
 import java.util.List;
 import java.util.UUID;
@@ -29,6 +30,10 @@ public record UpdateListingRequest(
         UUID categoryUuid,
         String title,
         String description,
+
+        /* Blank clears the code; null leaves it as it was. */
+        @Size(max = 64, message = "SKU must not exceed 64 characters")
+        String sku,
         @JsonAlias("price")
         @DecimalMin(value = "0.0", inclusive = true, message = "Price must not be negative")
         BigDecimal fullPrice,

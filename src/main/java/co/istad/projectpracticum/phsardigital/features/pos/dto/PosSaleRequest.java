@@ -1,5 +1,6 @@
 package co.istad.projectpracticum.phsardigital.features.pos.dto;
 
+import co.istad.projectpracticum.phsardigital.features.purchases.PaymentMethod;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -18,7 +19,13 @@ import java.util.UUID;
  *                       dropped connection settles onto the same sale instead of
  *                       ringing it up twice
  * @param customerName   optional; a walk-in has no account
- * @param amountTendered optional cash handed over, echoed back with the change due
+ * @param paymentMethod  how it was paid. Defaults to {@code CASH} when left out, which
+ *                       is what a counter does unless told otherwise, and keeps tills
+ *                       written before this existed working unchanged
+ * @param amountTendered cash handed over, echoed back with the change due. Only
+ *                       meaningful on a {@code CASH} sale — a KHQR customer pays the
+ *                       exact amount, so sending it alongside one is refused rather
+ *                       than quietly printing change nobody handed over
  * @param soldAt         optional time the sale happened, for a till that queued it
  *                       while offline. Ignored if it is in the future
  */
@@ -36,6 +43,8 @@ public record PosSaleRequest(
 
         @Size(max = 30, message = "Customer phone must not exceed 30 characters")
         String customerPhone,
+
+        PaymentMethod paymentMethod,
 
         @PositiveOrZero(message = "Amount tendered cannot be negative")
         BigDecimal amountTendered,

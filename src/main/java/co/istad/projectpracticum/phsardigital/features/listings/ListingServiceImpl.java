@@ -82,14 +82,61 @@ public class ListingServiceImpl implements ListingService{
      * what {@code ?status=} used to serve.
      */
     @Override
-    public Page<ListingResponse> getMyListings(String status, Integer pageNumber, Integer pageSize) {
+    public Page<ListingResponse> getMyListings(String status, String search,
+                                               Integer pageNumber, Integer pageSize) {
         String sellerId = AuthUtils.extractUserId();
         Pageable pageable = PageRequest.of(pageNumber, pageSize, Sort.by(Sort.Direction.DESC,("lastModifiedAt")));
+        ListingStatus parsedStatus = (status == null || status.isBlank()) ? null : parseStatus(status);
+        String term = searchTerm(search);
 
-        Page<Listing> listingPage = (status == null || status.isBlank())
-                ? listingRepository.findBySellerProfile_SellerId(sellerId, pageable)
-                : listingRepository.findBySellerProfile_SellerIdAndStatus(sellerId, parseStatus(status), pageable);
+        Page<Listing> listingPage;
+        if (term != null && parsedStatus != null) {
+            listingPage = listingRepository.searchOwnCatalogueByStatus(sellerId, parsedStatus, term, pageable);
+        } else if (term != null) {
+            listingPage = listingRepository.searchOwnCatalogue(sellerId, term, pageable);
+        } else if (parsedStatus != null) {
+            listingPage = listingRepository.findBySellerProfile_SellerIdAndStatus(sellerId, parsedStatus, pageable);
+        } else {
+            listingPage = listingRepository.findBySellerProfile_SellerId(sellerId, pageable);
+        }
         return listingResponseFactory.page(listingPage);
+    }
+
+    /**
+     * The search box's contents as a LIKE pattern, or null when it is empty.
+     *
+     * <p>A blank box must list everything rather than run a match on {@code %%}, which
+     * costs the same and reads as a search that found the whole catalogue.
+     */
+    private static String searchTerm(String search) {
+        if (search == null || search.isBlank()) {
+            return null;
+        }
+        return "%" + search.trim().toLowerCase(Locale.ROOT) + "%";
+    }
+
+    /**
+     * Normalises a shop code and insists nothing else in the shop already answers to it.
+     *
+     * <p>Two listings with the same code are indistinguishable at the counter, which is
+     * the one place the code exists to be used — so the collision is refused rather than
+     * resolved. Blank means "no code", not an empty one, so a seller can take a code off
+     * a listing by clearing the field.
+     *
+     * @param excludeUuid the listing being edited, so re-saving it without changing its
+     *                    code does not collide with itself
+     * @return the code as the seller typed it, or null when they gave none
+     */
+    private String requireFreeSku(String sku, String sellerId, UUID excludeUuid) {
+        if (sku == null || sku.isBlank()) {
+            return null;
+        }
+        String trimmed = sku.trim();
+        if (listingRepository.skuTakenBySeller(sellerId, trimmed, excludeUuid)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Another one of your listings already uses the code '" + trimmed + "'.");
+        }
+        return trimmed;
     }
 
     private ListingStatus parseStatus(String status) {
@@ -265,6 +312,7 @@ public class ListingServiceImpl implements ListingService{
         listing.setTitle(request.title());
         listing.setSlug(slug);
         listing.setDescription(request.description());
+        listing.setSku(requireFreeSku(request.sku(), sellerId, null));
         listing.setFullPrice(request.fullPrice());
         listing.setDiscountPrice(request.discountPrice());
         listing.setStockQty(request.stockQty());
@@ -313,6 +361,11 @@ public class ListingServiceImpl implements ListingService{
         }
         if (request.description() != null) {
             listing.setDescription(request.description());
+        }
+        if (request.sku() != null) {
+            // Blank clears the code rather than being rejected: a seller who mistypes one
+            // needs a way to take it off, and an empty string is how a form sends that.
+            listing.setSku(requireFreeSku(request.sku(), currentSellerId, listing.getUuid()));
         }
         // Checked against the state the listing ends up in, so dropping the list price
         // under a discount that was already there is caught too.

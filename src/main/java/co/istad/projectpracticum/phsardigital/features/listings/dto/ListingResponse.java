@@ -30,6 +30,7 @@ public record ListingResponse(
         String title,
         String slug,
         String description,
+        String sku,
         BigDecimal fullPrice,
         BigDecimal discountPrice,
         Integer stockQty,
@@ -57,7 +58,7 @@ public record ListingResponse(
      */
     public ListingResponse withRating(Double averageRating, Long reviewCount, Boolean isFavorite) {
         return new ListingResponse(
-                uuid, sellerProfile, category, title, slug, description,
+                uuid, sellerProfile, category, title, slug, description, sku,
                 fullPrice, discountPrice, stockQty,
                 status, isFeatured, thumbnailUri, sold, images, listingAttributes, specifications,
                 createdAt, lastModifiedAt, averageRating, reviewCount, isFavorite);

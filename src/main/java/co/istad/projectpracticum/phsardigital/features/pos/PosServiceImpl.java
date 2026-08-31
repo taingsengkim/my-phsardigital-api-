@@ -58,6 +58,7 @@ public class PosServiceImpl implements PosService {
         // customer's hands, so there is no pending state to move through.
         sale.setStatus(PurchaseStatus.COMPLETED);
         sale.setBuyerId(null);
+        sale.setPaymentMethod(paymentMethodOf(request));
         sale.setRecipientName(trimToNull(request.customerName()));
         sale.setRecipientPhone(trimToNull(request.customerPhone()));
         sale.setNote(trimToNull(request.note()));
@@ -85,7 +86,12 @@ public class PosServiceImpl implements PosService {
         applySoldAt(sale, request.soldAt());
 
         Purchase saved = purchaseRepository.save(sale);
-        return respond(saved, request.amountTendered());
+        return respond(saved, request);
+    }
+
+    /** A counter takes cash unless the till says otherwise. */
+    private static PaymentMethod paymentMethodOf(PosSaleRequest request) {
+        return request.paymentMethod() == null ? PaymentMethod.CASH : request.paymentMethod();
     }
 
     /**
@@ -158,11 +164,27 @@ public class PosServiceImpl implements PosService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "This sale UUID was already used for a different sale.");
         }
-        return respond(existing, request.amountTendered());
+        return respond(existing, request);
     }
 
-    private PosSaleResponse respond(Purchase sale, BigDecimal amountTendered) {
-        BigDecimal tendered = Money.of(amountTendered);
+    /**
+     * Works out the change, and refuses the combinations that cannot have happened.
+     *
+     * <p>Cash below the total is the obvious one. The subtler one is cash on a KHQR
+     * sale: the customer transferred an exact amount, so there is no float to give
+     * change from, and a receipt printing some would send them away short. Both are
+     * refused rather than corrected, because either means the till is confused about
+     * what just happened at the counter.
+     */
+    private PosSaleResponse respond(Purchase sale, PosSaleRequest request) {
+        PaymentMethod method = paymentMethodOf(request);
+        BigDecimal tendered = Money.of(request.amountTendered());
+
+        if (tendered != null && method != PaymentMethod.CASH) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Cash tendered does not apply to a " + method + " sale.");
+        }
+
         BigDecimal change = null;
         if (tendered != null) {
             if (Money.isLessThan(tendered, sale.getTotalPrice())) {
@@ -171,7 +193,11 @@ public class PosServiceImpl implements PosService {
             }
             change = Money.subtract(tendered, sale.getTotalPrice());
         }
-        return new PosSaleResponse(purchaseMapper.toResponse(sale), tendered, change);
+
+        // The stored method wins on a replay: what the sale was actually paid with was
+        // settled the first time, and a retry that disagrees does not get to rewrite it.
+        PaymentMethod recorded = sale.getPaymentMethod() == null ? method : sale.getPaymentMethod();
+        return new PosSaleResponse(purchaseMapper.toResponse(sale), recorded, tendered, change);
     }
 
     private static String trimToNull(String value) {

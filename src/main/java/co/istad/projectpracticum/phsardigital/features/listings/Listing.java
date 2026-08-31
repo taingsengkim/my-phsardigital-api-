@@ -38,6 +38,22 @@ public class Listing extends BasedEntity {
     @Column(nullable = false , unique = true)
     private String slug;
 
+    /**
+     * The shop's own code for this product — an article number, or whatever is printed
+     * on the barcode it scans at the counter.
+     *
+     * <p>Optional, and unique only within a shop rather than across the marketplace:
+     * two shops both numbering their first t-shirt {@code TS-001} is ordinary, and a
+     * global constraint would have them fighting over codes they cannot see. The
+     * uniqueness is enforced in {@code ListingServiceImpl}, since a database constraint
+     * cannot express "unique per seller, ignoring case" as cheaply.
+     *
+     * <p>Stored as the seller typed it, and matched without regard to case, because a
+     * barcode scanner and a keyboard disagree about capitals more often than not.
+     */
+    @Column(length = 64)
+    private String sku;
+
     @Column(nullable = false, columnDefinition = "TEXT")
     private String description;
 

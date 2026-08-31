@@ -211,7 +211,9 @@ class PosServiceImplTest {
 
     private static PosSaleRequest request(UUID saleUuid, List<PosSaleLineRequest> lines,
                                           BigDecimal tendered) {
-        return new PosSaleRequest(saleUuid, lines, "Walk-in", null, tendered, null, null);
+        // Payment method left null on purpose: the counter defaults to cash, and these
+        // tests are about stock and money rather than about how it was handed over.
+        return new PosSaleRequest(saleUuid, lines, "Walk-in", null, null, tendered, null, null);
     }
 
     private static SellerProfile sellerProfile() {

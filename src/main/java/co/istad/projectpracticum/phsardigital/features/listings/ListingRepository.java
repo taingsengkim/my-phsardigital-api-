@@ -100,6 +100,49 @@ public interface ListingRepository extends JpaRepository<Listing, UUID>, JpaSpec
     long countByStatus(ListingStatus status);
 
     /**
+     * Whether this shop already uses that code for something else.
+     *
+     * <p>Case-insensitive, because a code scanned from a barcode and the same code typed
+     * by hand routinely differ only in capitals, and two listings a seller cannot tell
+     * apart at the till are worse than a rejected edit.
+     *
+     * @param excludeUuid the listing being edited, so saving it without changing its own
+     *                    code does not collide with itself
+     */
+    @Query("SELECT COUNT(l) > 0 FROM Listing l "
+            + "WHERE l.sellerProfile.sellerId = :sellerId "
+            + "AND LOWER(l.sku) = LOWER(:sku) "
+            + "AND (:excludeUuid IS NULL OR l.uuid <> :excludeUuid)")
+    boolean skuTakenBySeller(@Param("sellerId") String sellerId,
+                             @Param("sku") String sku,
+                             @Param("excludeUuid") UUID excludeUuid);
+
+    /**
+     * A shop's own catalogue, searched by product name or by the code on its barcode —
+     * what a counter needs when somebody scans an item or types the first few letters.
+     *
+     * <p>Deliberately searches the shop's whole catalogue rather than only what is on
+     * sale: a seller ringing up a physical item in front of them should find it even if
+     * its listing is a draft.
+     */
+    @Query("SELECT l FROM Listing l "
+            + "WHERE l.sellerProfile.sellerId = :sellerId "
+            + "AND (LOWER(l.title) LIKE :term OR LOWER(l.sku) LIKE :term)")
+    Page<Listing> searchOwnCatalogue(@Param("sellerId") String sellerId,
+                                     @Param("term") String term,
+                                     Pageable pageable);
+
+    /** As {@link #searchOwnCatalogue}, narrowed to one state for the seller's tabs. */
+    @Query("SELECT l FROM Listing l "
+            + "WHERE l.sellerProfile.sellerId = :sellerId "
+            + "AND l.status = :status "
+            + "AND (LOWER(l.title) LIKE :term OR LOWER(l.sku) LIKE :term)")
+    Page<Listing> searchOwnCatalogueByStatus(@Param("sellerId") String sellerId,
+                                             @Param("status") ListingStatus status,
+                                             @Param("term") String term,
+                                             Pageable pageable);
+
+    /**
      * One shop's catalogue broken down by state, with the stock held in each.
      *
      * <p>JPQL rather than native so the enum and the join column are Hibernate's problem

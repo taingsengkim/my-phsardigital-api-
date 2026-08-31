@@ -87,9 +87,13 @@ public class ListingController {
     /**
      * The caller's own listings in any status. A literal segment, so it takes
      * precedence over {@code /{uuid}} below and "me" is never parsed as a UUID.
+     *
+     * @param search matches the product's title or its shop code, which is what a
+     *               counter needs when an item is scanned or half-typed
      */
     @GetMapping("/me")
     public Page<ListingResponse> getMine(@RequestParam(required = false) String status,
+                                         @RequestParam(required = false) String search,
                                          @RequestParam(defaultValue = "0")
                                          @Min(value = 0, message = "Page number must be zero or greater")
                                          Integer pageNumber,
@@ -97,7 +101,7 @@ public class ListingController {
                                          @Min(value = 1, message = "Page size must be at least 1")
                                          @Max(value = 100, message = "Page size must not exceed 100")
                                          Integer pageSize) {
-        return listingService.getMyListings(status, pageNumber, pageSize);
+        return listingService.getMyListings(status, search, pageNumber, pageSize);
     }
 
     @GetMapping("/{uuid}")

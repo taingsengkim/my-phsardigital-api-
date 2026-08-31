@@ -1,6 +1,7 @@
 package co.istad.projectpracticum.phsardigital.features.purchases.dto;
 
 import java.math.BigDecimal;
+import co.istad.projectpracticum.phsardigital.features.purchases.PaymentMethod;
 import co.istad.projectpracticum.phsardigital.features.purchases.PurchaseChannel;
 import co.istad.projectpracticum.phsardigital.features.purchases.PurchaseStatus;
 
@@ -36,6 +37,7 @@ public record PurchaseResponse(
         BigDecimal totalPrice,
         PurchaseStatus status,
         PurchaseChannel channel,
+        PaymentMethod paymentMethod,
         String shippingAddress,
         BigDecimal deliveryLatitude,
         BigDecimal deliveryLongitude,

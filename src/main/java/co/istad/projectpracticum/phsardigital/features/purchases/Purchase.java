@@ -54,6 +54,18 @@ public class Purchase extends BasedEntity implements Persistable<UUID> {
     private PurchaseStatus status = PurchaseStatus.PENDING;
 
     /**
+     * How the sale was paid for.
+     *
+     * <p>Set at the counter, where the seller knows because they watched it happen. Null
+     * on an online order, which is settled in cash on delivery by a courier this system
+     * never hears from — recording {@code CASH} there would be asserting something
+     * nobody has confirmed. Also null on every sale rung up before this was recorded.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "payment_method", length = 20)
+    private PaymentMethod paymentMethod;
+
+    /**
      * When the order reached each state, for the timeline a seller sees on an order.
      *
      * <p>{@code lastModifiedAt} cannot answer this: it moves on every write, so once an

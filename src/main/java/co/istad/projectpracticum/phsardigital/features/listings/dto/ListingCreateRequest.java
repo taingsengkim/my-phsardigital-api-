@@ -14,6 +14,8 @@ import java.util.UUID;
 /**
  * @param fullPrice     the list price, still accepted under its old name {@code price}
  * @param discountPrice optional sale price; must be below {@code fullPrice}
+ * @param sku           optional shop code or barcode, unique within the shop and used
+ *                      to find the product at the counter
  */
 public record ListingCreateRequest(
 
@@ -24,6 +26,9 @@ public record ListingCreateRequest(
         String title,
 
         String description,
+
+        @Size(max = 64, message = "SKU must not exceed 64 characters")
+        String sku,
 
         @JsonAlias("price")
         @NotNull(message = "Price must not be null")

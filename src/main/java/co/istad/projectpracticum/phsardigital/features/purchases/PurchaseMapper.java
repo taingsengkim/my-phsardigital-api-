@@ -53,6 +53,7 @@ public class PurchaseMapper {
                 p.getTotalPrice(),
                 p.getStatus(),
                 p.getChannel(),
+                p.getPaymentMethod(),
                 p.getShippingAddress(),
                 p.getDeliveryLatitude(),
                 p.getDeliveryLongitude(),

@@ -38,7 +38,15 @@ public interface ListingService {
      * @param pageSize   number of listings per page
      * @return a page of the caller's listings
      */
-    Page<ListingResponse> getMyListings(String status, Integer pageNumber, Integer pageSize);
+    /**
+     * The caller's own listings in any status.
+     *
+     * @param search free text matched against the product's title and its shop code, so
+     *               a counter can find an item by name or by scanning its barcode. Null
+     *               or blank lists everything.
+     */
+    Page<ListingResponse> getMyListings(String status, String search,
+                                        Integer pageNumber, Integer pageSize);
     /**
      * The public catalogue: browse, search, filter and sort.
      *
