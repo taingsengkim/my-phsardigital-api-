@@ -66,6 +66,22 @@ public class Purchase extends BasedEntity implements Persistable<UUID> {
     @Column(name = "recipient_phone", length = 30)
     private String recipientPhone;
 
+    /**
+     * Where the delivery point actually is, copied off the saved address at checkout on
+     * the same terms as {@link #shippingAddress}: the buyer may move the pin or delete
+     * the address later, and where a past order was sent must not move with it.
+     *
+     * <p>Null in two ordinary cases, so a client must handle its absence rather than
+     * assume a pin: an order placed against a one-off typed address, which never had
+     * coordinates, and any order placed before this was recorded. The precision matches
+     * {@code Address}, which is where the numbers come from.
+     */
+    @Column(name = "delivery_latitude", precision = 10, scale = 8)
+    private BigDecimal deliveryLatitude;
+
+    @Column(name = "delivery_longitude", precision = 11, scale = 8)
+    private BigDecimal deliveryLongitude;
+
     @Column(columnDefinition = "TEXT")
     private String note;
 

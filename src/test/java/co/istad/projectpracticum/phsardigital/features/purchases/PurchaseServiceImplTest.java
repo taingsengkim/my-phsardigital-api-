@@ -314,6 +314,68 @@ class PurchaseServiceImplTest {
     }
 
     @Test
+    void checkoutSnapshotsTheDeliveryCoordinatesOntoTheOrder() {
+        Cart cart = cartWithOneItem();
+        UUID cartUuid = cart.getUuid();
+        UUID addressId = UUID.randomUUID();
+        Address address = addressWithPhotos(addressId);
+        address.setLatitude(new BigDecimal("11.55630000"));
+        address.setLongitude(new BigDecimal("104.92820000"));
+
+        when(userProfileRepository.findByIdForCommerceLock("buyer-1"))
+                .thenReturn(Optional.of(buyerProfile()));
+        when(purchaseRepository.findById(cartUuid)).thenReturn(Optional.empty());
+        when(cartRepository.findByBuyerIdAndSellerIdForUpdate("buyer-1", "seller-1"))
+                .thenReturn(Optional.of(cart));
+        when(addressService.requireOwned(addressId, "buyer-1")).thenReturn(address);
+        when(purchaseRepository.save(any(Purchase.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        try (MockedStatic<AuthUtils> auth = mockStatic(AuthUtils.class)) {
+            auth.when(AuthUtils::extractUserId).thenReturn("buyer-1");
+            service().checkout("seller-1",
+                    new CheckoutRequest(cartUuid, addressId, null, null));
+        }
+
+        ArgumentCaptor<Purchase> purchase = ArgumentCaptor.forClass(Purchase.class);
+        verify(purchaseRepository).save(purchase.capture());
+        // Copied like the address text is: dragging the pin later must not move a
+        // delivery that already happened.
+        assertThat(purchase.getValue().getDeliveryLatitude())
+                .isEqualByComparingTo("11.55630000");
+        assertThat(purchase.getValue().getDeliveryLongitude())
+                .isEqualByComparingTo("104.92820000");
+    }
+
+    @Test
+    void aTypedOneOffAddressLeavesTheOrderWithoutCoordinates() {
+        // Nothing geocodes free text, so there is no pin to show. Clients have to fall
+        // back to the address line rather than assume one is always there.
+        Cart cart = cartWithOneItem();
+        UUID cartUuid = cart.getUuid();
+        when(userProfileRepository.findByIdForCommerceLock("buyer-1"))
+                .thenReturn(Optional.of(buyerProfile()));
+        when(purchaseRepository.findById(cartUuid)).thenReturn(Optional.empty());
+        when(cartRepository.findByBuyerIdAndSellerIdForUpdate("buyer-1", "seller-1"))
+                .thenReturn(Optional.of(cart));
+        when(purchaseRepository.save(any(Purchase.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        try (MockedStatic<AuthUtils> auth = mockStatic(AuthUtils.class)) {
+            auth.when(AuthUtils::extractUserId).thenReturn("buyer-1");
+            service().checkout("seller-1", new CheckoutRequest(
+                    cartUuid, null, "House 12, Street 271, Phnom Penh", null));
+        }
+
+        ArgumentCaptor<Purchase> purchase = ArgumentCaptor.forClass(Purchase.class);
+        verify(purchaseRepository).save(purchase.capture());
+        assertThat(purchase.getValue().getDeliveryLatitude()).isNull();
+        assertThat(purchase.getValue().getDeliveryLongitude()).isNull();
+        assertThat(purchase.getValue().getShippingAddress())
+                .isEqualTo("House 12, Street 271, Phnom Penh");
+    }
+
+    @Test
     void checkoutRejectsBuyingFromOwnShopBeforeTouchingTheCart() {
         UUID cartUuid = UUID.randomUUID();
 

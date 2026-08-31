@@ -307,6 +307,10 @@ public class PurchaseServiceImpl implements PurchaseService {
             purchase.setShippingAddress(addressText);
             savedRecipient = address.getRecipient();
             savedPhone = address.getPhone();
+            // Snapshotted for the same reason as the address text above: a pin the
+            // buyer later drags must not move a delivery that already happened.
+            purchase.setDeliveryLatitude(address.getLatitude());
+            purchase.setDeliveryLongitude(address.getLongitude());
             copyLandmarkPhotos(purchase, address);
         } else {
             purchase.setShippingAddress(request.shippingAddress().trim());

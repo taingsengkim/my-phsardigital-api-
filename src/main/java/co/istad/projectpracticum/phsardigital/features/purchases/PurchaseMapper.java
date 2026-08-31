@@ -1,7 +1,9 @@
 package co.istad.projectpracticum.phsardigital.features.purchases;
 
 import co.istad.projectpracticum.phsardigital.core.money.Money;
+import co.istad.projectpracticum.phsardigital.features.file.FileUpload;
 import co.istad.projectpracticum.phsardigital.features.file.FileUploadService;
+import co.istad.projectpracticum.phsardigital.features.listings.Listing;
 import co.istad.projectpracticum.phsardigital.features.purchases.dto.DeliveryPhotoResponse;
 import co.istad.projectpracticum.phsardigital.features.purchases.dto.PurchaseItemResponse;
 import co.istad.projectpracticum.phsardigital.features.purchases.dto.PurchaseResponse;
@@ -47,10 +49,13 @@ public class PurchaseMapper {
                 phone,
                 p.getSellerProfile().getSellerId(),
                 p.getSellerProfile().getBusinessName(),
+                previewUrl(p.getSellerProfile().getLogoFile()),
                 p.getTotalPrice(),
                 p.getStatus(),
                 p.getChannel(),
                 p.getShippingAddress(),
+                p.getDeliveryLatitude(),
+                p.getDeliveryLongitude(),
                 toDeliveryPhotos(p),
                 p.getNote(),
                 items,
@@ -67,14 +72,28 @@ public class PurchaseMapper {
                 .toList();
     }
 
+    /**
+     * The title stays as the order recorded it, while the slug and thumbnail are read
+     * live off the listing. The difference is deliberate: what was bought is history and
+     * must not change, but a link and a picture only exist to reach the product page as
+     * it is now, and a stale slug is just a dead link.
+     */
     private PurchaseItemResponse toItemResponse(PurchaseItem it) {
+        Listing listing = it.getListing();
         return new PurchaseItemResponse(
-                it.getListing().getUuid(),
-                it.getListing().getTitle(),
+                listing.getUuid(),
+                listing.getTitle(),
+                listing.getSlug(),
+                previewUrl(listing.getThumbnailFile()),
                 it.getQuantity(),
                 it.getUnitFullPrice(),
                 it.getUnitPrice(),
                 Money.multiply(it.getUnitPrice(), it.getQuantity())
         );
+    }
+
+    /** Null-safe: a shop with no logo, or a product with no photo, is ordinary. */
+    private String previewUrl(FileUpload file) {
+        return file == null ? null : fileUploadService.getPreviewUrl(file);
     }
 }
