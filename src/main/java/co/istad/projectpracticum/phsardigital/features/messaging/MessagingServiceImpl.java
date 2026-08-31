@@ -2,6 +2,8 @@ package co.istad.projectpracticum.phsardigital.features.messaging;
 
 import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
 import co.istad.projectpracticum.phsardigital.features.file.FileUploadService;
+import co.istad.projectpracticum.phsardigital.features.listings.Listing;
+import co.istad.projectpracticum.phsardigital.features.listings.ListingRepository;
 import co.istad.projectpracticum.phsardigital.features.messaging.dto.*;
 import co.istad.projectpracticum.phsardigital.features.seller.SellerAccessGuard;
 import co.istad.projectpracticum.phsardigital.features.subscription.SubscriptionService;
@@ -33,6 +35,7 @@ public class MessagingServiceImpl implements MessagingService {
     private final FileUploadService fileUploadService;
     private final SellerAccessGuard sellerAccessGuard;
     private final SubscriptionService subscriptionService;
+    private final ListingRepository listingRepository;
     @Override
     @Transactional(readOnly = true)
     public List<ConversationResponse> getMyConversations() {
@@ -87,6 +90,7 @@ public class MessagingServiceImpl implements MessagingService {
         message.setSenderId(me);
         message.setBody(request.body());
         message.setIsRead(false);
+        message.setListing(resolveListing(request.listingUuid(), conversation));
 
         Message saved = messageRepository.save(message);
 
@@ -106,7 +110,9 @@ public class MessagingServiceImpl implements MessagingService {
                 "/queue/messages",
                 response
         );
-        return toMessageResponse(saved);
+        // The same response the recipient was pushed, rather than building a second
+        // identical one — which now costs a listing and a thumbnail lookup as well.
+        return response;
     }
 
     @Override
@@ -135,6 +141,48 @@ public class MessagingServiceImpl implements MessagingService {
         }
         sellerAccessGuard.requireActiveSeller(userId);
         subscriptionService.requireChatAllowed(userId);
+    }
+
+    /**
+     * Resolves the product a message is about, and refuses one that has no business
+     * being there.
+     *
+     * <p>The listing has to belong to one of the two people in the thread. Without that
+     * check anybody could attach any shop's product to any conversation, which would
+     * let a chat window render a rival's listing — or be used to push a product card at
+     * someone who never asked about it. Ownership is the whole of the rule: whether the
+     * listing is currently buyable is deliberately not checked, because asking a shop
+     * about something that just sold out is exactly when a buyer most wants to write.
+     *
+     * @return the listing, or null when the message names none
+     */
+    private Listing resolveListing(UUID listingUuid, Conversation conversation) {
+        if (listingUuid == null) {
+            return null;
+        }
+
+        Listing listing = listingRepository.findById(listingUuid)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Listing not found."));
+
+        String owner = listing.getSellerProfile().getSellerId();
+        if (!owner.equals(conversation.getParticipantA())
+                && !owner.equals(conversation.getParticipantB())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "That listing does not belong to either person in this conversation.");
+        }
+        return listing;
+    }
+
+    /** The product card for a message, or null when it names no product. */
+    private ListingContextResponse toListingContext(Listing listing) {
+        if (listing == null) {
+            return null;
+        }
+        String thumbnailUrl = listing.getThumbnailFile() == null
+                ? null
+                : fileUploadService.getPreviewUrl(listing.getThumbnailFile());
+        return ListingContextResponse.of(listing, thumbnailUrl);
     }
 
     /** Normalizes the pair (a < b) so one pair == one conversation. */
@@ -176,6 +224,14 @@ public class MessagingServiceImpl implements MessagingService {
 
         long unread = messageRepository.countUnread(c.getUuid(), me);
 
+        // The newest message that named a product, which is rarely the newest message:
+        // an enquiry opens with the card and the conversation carries on without it.
+        Page<Message> latestWithListing = messageRepository
+                .findLatestWithListing(c.getUuid(), PageRequest.of(0, 1));
+        ListingContextResponse lastListing = latestWithListing.hasContent()
+                ? toListingContext(latestWithListing.getContent().getFirst().getListing())
+                : null;
+
         return new ConversationResponse(
                 c.getUuid(),
                 otherId,
@@ -183,7 +239,8 @@ public class MessagingServiceImpl implements MessagingService {
                 avatarUrl(other),
                 lastBody,
                 lastAt,
-                unread
+                unread,
+                lastListing
         );
     }
 
@@ -203,7 +260,8 @@ public class MessagingServiceImpl implements MessagingService {
                 sender != null ? sender.getFullName() : null,
                 m.getBody(),
                 m.getIsRead(),
-                m.getSentAt()
+                m.getSentAt(),
+                toListingContext(m.getListing())
         );
     }
 }
