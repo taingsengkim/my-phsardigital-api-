@@ -55,6 +55,77 @@ public interface PurchaseRepository extends JpaRepository<Purchase, UUID> {
             """, nativeQuery = true)
     List<Object[]> summariseOrdersForSeller(@Param("sellerId") String sellerId);
 
+    /** Orders placed by anyone at this shop since a moment — the "today" counter. */
+    long countBySellerProfile_SellerIdAndCreatedAtGreaterThanEqual(String sellerId,
+                                                                  LocalDateTime since);
+
+    /**
+     * What one shop booked in a window: the value of orders placed in it that were not
+     * cancelled.
+     *
+     * <p>Bucketed on when the order was <em>placed</em>, not when it settled. Orders here
+     * are paid in cash on delivery, so settlement trails placement by a day or more —
+     * "today's sales" measured on delivery would show a shop nothing for the orders it
+     * actually took today, which is the number it opens the dashboard for.
+     *
+     * <p>Cancelled orders are excluded because they came to nothing. Cent-cast for the
+     * same reason as {@link #sumRoundedTotalPriceByStatus}.
+     */
+    @Query(value = """
+            SELECT COALESCE(SUM(CAST(total_price AS numeric(19, 2))), CAST(0 AS numeric(19, 2)))
+            FROM purchases
+            WHERE seller_profile_id = :sellerId
+              AND status <> 'CANCELLED'
+              AND created_at >= :from
+              AND created_at < :to
+            """, nativeQuery = true)
+    BigDecimal sumSalesPlacedBetween(@Param("sellerId") String sellerId,
+                                     @Param("from") LocalDateTime from,
+                                     @Param("to") LocalDateTime to);
+
+    /**
+     * A shop's orders and takings per calendar day, for the dashboard chart.
+     *
+     * <p>Days the shop sold nothing are absent rather than zero rows — a database cannot
+     * invent dates it has no data for — so the caller fills the gaps across the window
+     * it asked about.
+     *
+     * @return {@code [date, orderCount, sales]}, oldest first
+     */
+    @Query(value = """
+            SELECT CAST(created_at AS date) AS day,
+                   COUNT(*),
+                   COALESCE(SUM(CAST(total_price AS numeric(19, 2))), CAST(0 AS numeric(19, 2)))
+            FROM purchases
+            WHERE seller_profile_id = :sellerId
+              AND status <> 'CANCELLED'
+              AND created_at >= :from
+            GROUP BY CAST(created_at AS date)
+            ORDER BY day ASC
+            """, nativeQuery = true)
+    List<Object[]> dailySalesForSeller(@Param("sellerId") String sellerId,
+                                       @Param("from") LocalDateTime from);
+
+    /**
+     * A shop's best sellers, by units moved.
+     *
+     * <p>Counts only orders the seller accepted. A PENDING order is a request nobody has
+     * agreed to yet and a CANCELLED one came to nothing, so counting either would let a
+     * shop's own bestseller list be shaped by orders that never happened — the same
+     * reasoning as {@link #rankBoughtTogetherWith}.
+     *
+     * @return {@code [listingUuid, unitsSold, revenue]}, best first
+     */
+    @Query("SELECT i.listing.uuid, SUM(i.quantity), SUM(i.unitPrice * i.quantity) "
+            + "FROM PurchaseItem i "
+            + "WHERE i.purchase.sellerProfile.sellerId = :sellerId "
+            + "AND i.purchase.status IN :statuses "
+            + "GROUP BY i.listing.uuid "
+            + "ORDER BY SUM(i.quantity) DESC")
+    List<Object[]> rankSellerProductsByUnits(@Param("sellerId") String sellerId,
+                                             @Param("statuses") Collection<PurchaseStatus> statuses,
+                                             Pageable pageable);
+
     /**
      * A shop's orders matching a free-text query, for the search box above the order list.
      *

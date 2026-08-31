@@ -142,6 +142,11 @@ app:
       emails-per-address: ${AUTH_RATE_LIMIT_EMAILS_PER_ADDRESS:3}
       email-period: ${AUTH_RATE_LIMIT_EMAIL_PERIOD:1h}
       max-tracked-keys: ${AUTH_RATE_LIMIT_MAX_TRACKED_KEYS:50000}
+  seller:
+    # At or below this many units, a listing that is on sale is reported as running low
+    # on the shop's dashboard. What counts as low depends on what is being sold, so it
+    # is a setting rather than a constant.
+    low-stock-threshold: ${SELLER_LOW_STOCK_THRESHOLD:5}
   maps:
     # Shop locations can be set by pasting a Google Maps link. The mobile app's Share
     # button produces a maps.app.goo.gl redirect, which has to be followed to see the

@@ -100,6 +100,36 @@ public interface ListingRepository extends JpaRepository<Listing, UUID>, JpaSpec
     long countByStatus(ListingStatus status);
 
     /**
+     * One shop's catalogue broken down by state, with the stock held in each.
+     *
+     * <p>JPQL rather than native so the enum and the join column are Hibernate's problem
+     * rather than a hard-coded column name, and {@code stockQty} is a whole number, so
+     * summing it carries none of the float trouble the money columns do.
+     *
+     * @return {@code [status, listingCount, unitsInStock]} per state the shop has
+     *         listings in; a state it has none in is absent rather than a zero row
+     */
+    @Query("SELECT l.status, COUNT(l), COALESCE(SUM(l.stockQty), 0) FROM Listing l "
+            + "WHERE l.sellerProfile.sellerId = :sellerId "
+            + "GROUP BY l.status")
+    List<Object[]> summariseInventoryForSeller(@Param("sellerId") String sellerId);
+
+    /**
+     * Listings running low but not yet out — the restock warning.
+     *
+     * <p>Only counts listings that are actually on sale: a draft nobody can buy is not
+     * a shortage. {@code stockQty > 0} keeps a sold-out listing from being counted here
+     * as well as in the sold-out tile, so the two numbers add up rather than overlap.
+     */
+    @Query("SELECT COUNT(l) FROM Listing l "
+            + "WHERE l.sellerProfile.sellerId = :sellerId "
+            + "AND l.status = :status "
+            + "AND l.stockQty > 0 AND l.stockQty <= :threshold")
+    long countLowStockForSeller(@Param("sellerId") String sellerId,
+                                @Param("status") ListingStatus status,
+                                @Param("threshold") int threshold);
+
+    /**
      * Status alone is not sellability: stock and shop must permit sale, while the
      * caller supplies categories whose complete ancestry is publicly available.
      */

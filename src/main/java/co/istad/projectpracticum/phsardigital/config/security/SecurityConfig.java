@@ -78,6 +78,13 @@ public class SecurityConfig {
                         // authenticated() — a storefront a logged-out visitor could not
                         // open, while its reviews were public. /sellers/me is the one
                         // that answers for the current token, so it goes first.
+                        // Before the /sellers/me rule below and well before the open
+                        // shop pages: this one reports a shop's takings, so it needs the
+                        // seller role rather than merely a token. Without an explicit
+                        // rule it would fall through to authenticated() and answer any
+                        // signed-in buyer.
+                        .requestMatchers(HttpMethod.GET,"/api/v1/sellers/me/dashboard")
+                        .hasAnyRole("SELLER","ADMIN")
                         .requestMatchers(HttpMethod.GET,"/api/v1/sellers/me").authenticated()
                         .requestMatchers(HttpMethod.GET,"/api/v1/sellers/top").permitAll()
                         .requestMatchers(HttpMethod.GET,"/api/v1/sellers/*","/api/v1/sellers/*/listings").permitAll()
