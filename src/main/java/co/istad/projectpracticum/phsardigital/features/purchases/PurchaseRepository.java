@@ -36,6 +36,15 @@ public interface PurchaseRepository extends JpaRepository<Purchase, UUID> {
     long countByStatus(PurchaseStatus status);
 
     /**
+     * Whether any order names this listing.
+     *
+     * <p>{@code PurchaseItem.listing} is a non-null foreign key, so deleting a listing
+     * somebody ordered would either fail outright or take the order line with it.
+     * Either way the buyer's history stops saying what they bought.
+     */
+    boolean existsByItems_Listing_Uuid(UUID listingUuid);
+
+    /**
      * How many distinct people have ever reached this order state — the dashboard's
      * buyer count.
      *

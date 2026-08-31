@@ -338,9 +338,10 @@ public class ListingServiceImpl implements ListingService{
             }
         }
         if (request.status() != null) {
-            if (request.status() == ListingStatus.SUSPENDED) {
+            if (request.status() == ListingStatus.SUSPENDED
+                    || request.status() == ListingStatus.REMOVED) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                        "Only an admin can suspend a listing.");
+                        "Only an admin can moderate a listing.");
             }
             // Archived listings do not count against the plan, so bringing one back is
             // the same act as publishing a new one. Without this check a seller could
@@ -507,14 +508,19 @@ public class ListingServiceImpl implements ListingService{
     }
 
     /**
-     * A suspended listing is frozen for its seller: not editable, not re-photographed,
+     * A moderated listing is frozen for its seller: not editable, not re-photographed,
      * not deletable. Deleting especially — that would let a seller erase the listing an
      * admin took down, along with the reason it was taken down.
      */
-    private void requireNotSuspended(Listing listing) {
+    private void requireNotModerated(Listing listing) {
         if (listing.getStatus() == ListingStatus.SUSPENDED) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                     "This listing has been suspended by an administrator and cannot be changed. "
+                            + "Reason: " + listing.getModerationReason());
+        }
+        if (listing.getStatus() == ListingStatus.REMOVED) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "This listing has been removed by an administrator and cannot be changed. "
                             + "Reason: " + listing.getModerationReason());
         }
     }
@@ -524,7 +530,7 @@ public class ListingServiceImpl implements ListingService{
         if (!listing.getSellerProfile().getSellerId().equals(sellerId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, forbiddenMessage);
         }
-        requireNotSuspended(listing);
+        requireNotModerated(listing);
         sellerAccessGuard.requireActiveSeller(sellerId);
         return sellerId;
     }

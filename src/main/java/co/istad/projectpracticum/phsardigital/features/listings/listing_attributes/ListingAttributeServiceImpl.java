@@ -140,9 +140,10 @@ public class ListingAttributeServiceImpl implements ListingAttributeService {
         if (!listing.getSellerProfile().getSellerId().equals(sellerId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, forbiddenMessage);
         }
-        if (listing.getStatus() == ListingStatus.SUSPENDED) {
+        if (listing.getStatus() == ListingStatus.SUSPENDED
+                || listing.getStatus() == ListingStatus.REMOVED) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN,
-                    "This listing has been suspended by an administrator and its attributes "
+                    "This listing has been taken down by an administrator and its attributes "
                             + "cannot be changed. Reason: " + listing.getModerationReason());
         }
         sellerAccessGuard.requireActiveSeller(sellerId);

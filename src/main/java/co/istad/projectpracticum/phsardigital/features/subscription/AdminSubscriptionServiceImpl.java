@@ -20,18 +20,21 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class AdminSubscriptionServiceImpl implements AdminSubscriptionService {
 
-    /** Mirrors {@code SubscriptionServiceImpl}: archived listings do not count. */
-    private static final ListingStatus UNCOUNTED_STATUS = ListingStatus.ARCHIVED;
+    /** Mirrors {@code SubscriptionServiceImpl}, so both report the same usage. */
+    private static final Set<ListingStatus> UNCOUNTED_STATUSES =
+            EnumSet.of(ListingStatus.ARCHIVED, ListingStatus.REMOVED);
 
     private final SubscriptionPlanRepository planRepository;
     private final SellerSubscriptionRepository subscriptionRepository;
@@ -225,8 +228,8 @@ public class AdminSubscriptionServiceImpl implements AdminSubscriptionService {
      */
     private SellerSubscriptionResponse toResponse(SellerSubscription subscription,
                                                   SubscriptionPlan plan) {
-        long used = listingRepository.countBySellerProfile_SellerIdAndStatusNot(
-                subscription.getSellerId(), UNCOUNTED_STATUS);
+        long used = listingRepository.countBySellerProfile_SellerIdAndStatusNotIn(
+                subscription.getSellerId(), UNCOUNTED_STATUSES);
         boolean active = subscription.isCurrentlyActive();
 
         return new SellerSubscriptionResponse(

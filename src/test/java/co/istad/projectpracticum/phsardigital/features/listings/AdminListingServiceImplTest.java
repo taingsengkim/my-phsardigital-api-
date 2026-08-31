@@ -3,9 +3,12 @@ package co.istad.projectpracticum.phsardigital.features.listings;
 import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
 import co.istad.projectpracticum.phsardigital.features.categories.Category;
 import co.istad.projectpracticum.phsardigital.features.categories.CategoryAvailability;
+import co.istad.projectpracticum.phsardigital.features.file.FileUploadService;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_attributes.ListingAttributeWriter;
+import co.istad.projectpracticum.phsardigital.features.purchases.PurchaseRepository;
 import co.istad.projectpracticum.phsardigital.features.listings.listing_attributes.dto.ListingAttributeCreateRequest;
 import co.istad.projectpracticum.phsardigital.features.seller.SellerProfile;
+import co.istad.projectpracticum.phsardigital.features.seller.dto.SuspendRequest;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
@@ -40,6 +43,10 @@ class AdminListingServiceImplTest {
     private CategoryAvailability categoryAvailability;
     @Mock
     private ListingAttributeWriter listingAttributeWriter;
+    @Mock
+    private PurchaseRepository purchaseRepository;
+    @Mock
+    private FileUploadService fileUploadService;
 
     @Test
     void restoresPublicListingUnderLockAfterAllAvailabilityAndSchemaChecks() {
@@ -178,12 +185,130 @@ class AdminListingServiceImplTest {
         verifyNoInteractions(categoryAvailability, listingAttributeWriter);
     }
 
+    /**
+     * The point of a separate REMOVED status: a suspension already recorded what the
+     * listing was, and removing it must not overwrite that with SUSPENDED — a later
+     * restore would then put the listing back into a moderation state.
+     */
+    @Test
+    void removingASuspendedListingKeepsWhatItWasBeforeTheSuspension() {
+        AdminListingServiceImpl service = service();
+        UUID listingUuid = UUID.randomUUID();
+        Listing listing = suspendedListing(listingUuid, ListingStatus.ACTIVE, 4);
+        when(listingRepository.findByUuidWithDetails(listingUuid)).thenReturn(Optional.of(listing));
+        when(listingRepository.save(listing)).thenReturn(listing);
+
+        try (MockedStatic<AuthUtils> auth = authenticatedAdmin()) {
+            service.remove(listingUuid, new SuspendRequest("Counterfeit"));
+        }
+
+        assertThat(listing.getStatus()).isEqualTo(ListingStatus.REMOVED);
+        assertThat(listing.getStatusBeforeSuspension()).isEqualTo(ListingStatus.ACTIVE);
+        assertThat(listing.getModerationReason()).isEqualTo("Counterfeit");
+    }
+
+    @Test
+    void removingAnUntouchedListingRecordsWhatItWas() {
+        AdminListingServiceImpl service = service();
+        UUID listingUuid = UUID.randomUUID();
+        Listing listing = suspendedListing(listingUuid, null, 4);
+        listing.setStatus(ListingStatus.ACTIVE);
+        when(listingRepository.findByUuidWithDetails(listingUuid)).thenReturn(Optional.of(listing));
+        when(listingRepository.save(listing)).thenReturn(listing);
+
+        try (MockedStatic<AuthUtils> auth = authenticatedAdmin()) {
+            service.remove(listingUuid, new SuspendRequest("Prohibited item"));
+        }
+
+        assertThat(listing.getStatus()).isEqualTo(ListingStatus.REMOVED);
+        assertThat(listing.getStatusBeforeSuspension()).isEqualTo(ListingStatus.ACTIVE);
+    }
+
+    @Test
+    void suspendingAnAlreadyRemovedListingConflicts() {
+        AdminListingServiceImpl service = service();
+        UUID listingUuid = UUID.randomUUID();
+        Listing listing = suspendedListing(listingUuid, ListingStatus.ACTIVE, 4);
+        listing.setStatus(ListingStatus.REMOVED);
+        when(listingRepository.findByUuidWithDetails(listingUuid)).thenReturn(Optional.of(listing));
+
+        assertThatThrownBy(() -> service.suspend(listingUuid, new SuspendRequest("Reason")))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
+                        .isEqualTo(HttpStatus.CONFLICT));
+
+        verify(listingRepository, never()).save(listing);
+    }
+
+    @Test
+    void aRemovedListingCanBeRestored() {
+        AdminListingServiceImpl service = service();
+        UUID listingUuid = UUID.randomUUID();
+        Listing listing = suspendedListing(listingUuid, ListingStatus.ARCHIVED, 4);
+        listing.setStatus(ListingStatus.REMOVED);
+        when(listingRepository.findByUuidForEdit(listingUuid)).thenReturn(Optional.of(listing));
+        when(listingRepository.save(listing)).thenReturn(listing);
+
+        try (MockedStatic<AuthUtils> auth = authenticatedAdmin()) {
+            service.restore(listingUuid);
+        }
+
+        assertThat(listing.getStatus()).isEqualTo(ListingStatus.ARCHIVED);
+        assertThat(listing.getStatusBeforeSuspension()).isNull();
+        assertThat(listing.getModerationReason()).isNull();
+    }
+
+    /** Erasing an ordered listing would break the buyer's history. */
+    @Test
+    void deleteIsRefusedOnceAnyOrderNamesTheListing() {
+        AdminListingServiceImpl service = service();
+        UUID listingUuid = UUID.randomUUID();
+        Listing listing = suspendedListing(listingUuid, ListingStatus.ACTIVE, 4);
+        when(listingRepository.findByUuidWithDetails(listingUuid)).thenReturn(Optional.of(listing));
+        when(purchaseRepository.existsByItems_Listing_Uuid(listingUuid)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.delete(listingUuid))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(error -> {
+                    var failure = (ResponseStatusException) error;
+                    assertThat(failure.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+                    assertThat(failure.getReason()).contains("/remove");
+                });
+
+        verify(listingRepository, never()).delete(listing);
+    }
+
+    @Test
+    void deleteErasesAnUnorderedListingAndReleasesItsFilesAfterwards() {
+        AdminListingServiceImpl service = service();
+        UUID listingUuid = UUID.randomUUID();
+        Listing listing = suspendedListing(listingUuid, ListingStatus.ACTIVE, 4);
+        when(listingRepository.findByUuidWithDetails(listingUuid)).thenReturn(Optional.of(listing));
+        when(purchaseRepository.existsByItems_Listing_Uuid(listingUuid)).thenReturn(false);
+
+        try (MockedStatic<AuthUtils> auth = authenticatedAdmin()) {
+            service.delete(listingUuid);
+        }
+
+        InOrder order = inOrder(listingRepository);
+        order.verify(listingRepository).delete(listing);
+        order.verify(listingRepository).flush();
+    }
+
+    private static MockedStatic<AuthUtils> authenticatedAdmin() {
+        MockedStatic<AuthUtils> auth = mockStatic(AuthUtils.class);
+        auth.when(AuthUtils::extractUserId).thenReturn("admin-1");
+        return auth;
+    }
+
     private AdminListingServiceImpl service() {
         return new AdminListingServiceImpl(
                 listingRepository,
                 listingMapper,
                 categoryAvailability,
-                listingAttributeWriter);
+                listingAttributeWriter,
+                purchaseRepository,
+                fileUploadService);
     }
 
     private static Listing suspendedListing(
