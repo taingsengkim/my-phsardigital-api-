@@ -59,7 +59,10 @@ public class PurchaseMapper {
                 toDeliveryPhotos(p),
                 p.getNote(),
                 items,
-                p.getCreatedAt()
+                p.getCreatedAt(),
+                p.getConfirmedAt(),
+                p.getCompletedAt(),
+                p.getCancelledAt()
         );
     }
 

@@ -42,6 +42,9 @@ public record PurchaseResponse(
         List<DeliveryPhotoResponse> deliveryPhotos,
         String note,
         List<PurchaseItemResponse> items,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        LocalDateTime confirmedAt,
+        LocalDateTime completedAt,
+        LocalDateTime cancelledAt
 ) {
 }

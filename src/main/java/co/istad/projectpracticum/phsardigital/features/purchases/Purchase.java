@@ -9,6 +9,7 @@ import lombok.Setter;
 import org.springframework.data.domain.Persistable;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -51,6 +52,26 @@ public class Purchase extends BasedEntity implements Persistable<UUID> {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private PurchaseStatus status = PurchaseStatus.PENDING;
+
+    /**
+     * When the order reached each state, for the timeline a seller sees on an order.
+     *
+     * <p>{@code lastModifiedAt} cannot answer this: it moves on every write, so once an
+     * order is completed the moment it was <em>accepted</em> is gone. Three nullable
+     * columns rather than a history table because the state machine has four states and
+     * no branches — a table would buy flexibility nothing currently needs.
+     *
+     * <p>Null means the order never reached that state, which is also true of every
+     * order placed before these existed. A client reads them as "unknown", not "now".
+     */
+    @Column(name = "confirmed_at")
+    private LocalDateTime confirmedAt;
+
+    @Column(name = "completed_at")
+    private LocalDateTime completedAt;
+
+    @Column(name = "cancelled_at")
+    private LocalDateTime cancelledAt;
 
     /**
      * Delivery details copied at checkout, never a reference to the saved address they

@@ -31,9 +31,15 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.Comparator;
+import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -187,6 +193,7 @@ public class PurchaseServiceImpl implements PurchaseService {
         }
 
         purchase.setStatus(PurchaseStatus.CONFIRMED);
+        purchase.setConfirmedAt(LocalDateTime.now());
         return purchaseMapper.toResponse(purchaseRepository.save(purchase));
     }
 
@@ -202,6 +209,7 @@ public class PurchaseServiceImpl implements PurchaseService {
                     "Only CONFIRMED orders can be completed.");
         }
         purchase.setStatus(PurchaseStatus.COMPLETED);
+        purchase.setCompletedAt(LocalDateTime.now());
         return purchaseMapper.toResponse(purchase);
     }
 
@@ -242,6 +250,7 @@ public class PurchaseServiceImpl implements PurchaseService {
         }
 
         purchase.setStatus(PurchaseStatus.CANCELLED);
+        purchase.setCancelledAt(LocalDateTime.now());
         return purchaseMapper.toResponse(purchase);
     }
 
@@ -268,16 +277,59 @@ public class PurchaseServiceImpl implements PurchaseService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<PurchaseResponse> findSellerOrders(PurchaseStatus status, int pageNumber, int pageSize) {
+    public Page<PurchaseResponse> findSellerOrders(PurchaseStatus status, String search,
+                                                   int pageNumber, int pageSize) {
         String sellerId = AuthUtils.extractUserId();
         PageRequest pageable = purchasePage(pageNumber, pageSize);
+        String term = searchTerm(search);
 
-        // Unfiltered is the order history; filtered to PENDING is the work queue. The
-        // two answer different questions and the seller needs the second one far more.
-        Page<Purchase> orders = status == null
-                ? purchaseRepository.findBySellerProfile_SellerId(sellerId, pageable)
-                : purchaseRepository.findBySellerProfile_SellerIdAndStatus(sellerId, status, pageable);
+        // Three shapes, because the cheap ones should stay cheap. Unfiltered is the
+        // order history and filtered to PENDING is the work queue; only a search pays
+        // for the joins across items and listings.
+        Page<Purchase> orders;
+        if (term != null) {
+            Set<PurchaseStatus> statuses = status == null
+                    ? EnumSet.allOf(PurchaseStatus.class)
+                    : EnumSet.of(status);
+            orders = purchaseRepository.searchSellerOrders(sellerId, statuses, term, pageable);
+        } else if (status == null) {
+            orders = purchaseRepository.findBySellerProfile_SellerId(sellerId, pageable);
+        } else {
+            orders = purchaseRepository.findBySellerProfile_SellerIdAndStatus(sellerId, status, pageable);
+        }
         return orders.map(purchaseMapper::toResponse);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public SellerOrderSummaryResponse summariseMyOrders() {
+        String sellerId = AuthUtils.extractUserId();
+
+        Map<PurchaseStatus, Long> counts = new EnumMap<>(PurchaseStatus.class);
+        Map<PurchaseStatus, BigDecimal> revenue = new EnumMap<>(PurchaseStatus.class);
+        for (Object[] row : purchaseRepository.summariseOrdersForSeller(sellerId)) {
+            PurchaseStatus status = PurchaseStatus.valueOf((String) row[0]);
+            counts.put(status, ((Number) row[1]).longValue());
+            revenue.put(status, (BigDecimal) row[2]);
+        }
+        return SellerOrderSummaryResponse.of(counts, revenue);
+    }
+
+    /**
+     * Normalises the search box's contents into a LIKE pattern, or null when the caller
+     * is not really searching. A blank box must fall through to the plain listing rather
+     * than run a join that matches everything.
+     */
+    private static String searchTerm(String search) {
+        if (search == null || search.isBlank()) {
+            return null;
+        }
+        // Order ids are shown with a prefix and separators the column does not have, so
+        // a seller pasting "#ORD-9f3a" still finds 9f3a.
+        String cleaned = search.trim().toLowerCase(Locale.ROOT)
+                .replace("#", "")
+                .replace("ord-", "");
+        return "%" + cleaned + "%";
     }
 
     /**

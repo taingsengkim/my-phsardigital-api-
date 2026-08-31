@@ -33,6 +33,73 @@ public interface PurchaseRepository extends JpaRepository<Purchase, UUID> {
 
     Page<Purchase> findBySellerProfile_SellerIdAndStatus(String sellerId, PurchaseStatus status, Pageable pageable);
 
+    /**
+     * One shop's order counts and takings, broken down by state — the whole of a seller's
+     * order dashboard in a single round trip rather than one query per tile.
+     *
+     * <p>Native and cent-cast for the same reason as {@link #sumRoundedTotalPriceByStatus}:
+     * the money column is floating point, and a seller's revenue is not a number to
+     * report with binary drift in it.
+     *
+     * @return {@code [status, orderCount, revenue]} per state the shop has orders in;
+     *         a state with no orders is absent rather than a zero row, so the caller
+     *         fills the gaps
+     */
+    @Query(value = """
+            SELECT status,
+                   COUNT(*),
+                   COALESCE(SUM(CAST(total_price AS numeric(19, 2))), CAST(0 AS numeric(19, 2)))
+            FROM purchases
+            WHERE seller_profile_id = :sellerId
+            GROUP BY status
+            """, nativeQuery = true)
+    List<Object[]> summariseOrdersForSeller(@Param("sellerId") String sellerId);
+
+    /**
+     * A shop's orders matching a free-text query, for the search box above the order list.
+     *
+     * <p>Searches the order id, who it is going to, their phone, and the names of the
+     * products in it — the four things a seller actually has to hand when a customer
+     * rings up about an order. {@code recipientName} rather than the buyer's account
+     * name because checkout always records a recipient, and it is the recipient the
+     * order is actually for.
+     *
+     * <p>{@code LEFT JOIN} so an order still matches on its own fields even if a listing
+     * in it has since gone, and {@code DISTINCT} so an order whose several items all
+     * match is returned once.
+     *
+     * @param statuses which states to include. Every state when the caller is not
+     *                 filtering, rather than a nullable single value — a null enum
+     *                 compared against {@code IS NULL} gives Hibernate nothing to infer
+     *                 the parameter's type from, and the failure would land at startup.
+     */
+    @Query(value = """
+            SELECT DISTINCT p FROM Purchase p
+            LEFT JOIN p.items i
+            LEFT JOIN i.listing l
+            WHERE p.sellerProfile.sellerId = :sellerId
+              AND p.status IN :statuses
+              AND (LOWER(CAST(p.uuid AS String)) LIKE :term
+                   OR LOWER(p.recipientName) LIKE :term
+                   OR LOWER(p.recipientPhone) LIKE :term
+                   OR LOWER(l.title) LIKE :term)
+            """,
+            countQuery = """
+            SELECT COUNT(DISTINCT p) FROM Purchase p
+            LEFT JOIN p.items i
+            LEFT JOIN i.listing l
+            WHERE p.sellerProfile.sellerId = :sellerId
+              AND p.status IN :statuses
+              AND (LOWER(CAST(p.uuid AS String)) LIKE :term
+                   OR LOWER(p.recipientName) LIKE :term
+                   OR LOWER(p.recipientPhone) LIKE :term
+                   OR LOWER(l.title) LIKE :term)
+            """)
+    Page<Purchase> searchSellerOrders(@Param("sellerId") String sellerId,
+                                      @Param("statuses") Collection<PurchaseStatus> statuses,
+                                      @Param("term") String term,
+                                      Pageable pageable);
+
     long countByStatus(PurchaseStatus status);
 
     /**

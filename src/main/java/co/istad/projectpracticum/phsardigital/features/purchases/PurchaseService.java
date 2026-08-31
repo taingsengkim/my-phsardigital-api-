@@ -2,6 +2,7 @@ package co.istad.projectpracticum.phsardigital.features.purchases;
 
 import co.istad.projectpracticum.phsardigital.features.purchases.dto.CheckoutRequest;
 import co.istad.projectpracticum.phsardigital.features.purchases.dto.PurchaseResponse;
+import co.istad.projectpracticum.phsardigital.features.purchases.dto.SellerOrderSummaryResponse;
 import org.springframework.data.domain.Page;
 
 import java.util.UUID;
@@ -29,7 +30,18 @@ public interface PurchaseService {
      * @param status optional filter; pass {@code PENDING} for the orders awaiting a
      *               decision, or null for the full history
      */
-    Page<PurchaseResponse> findSellerOrders(PurchaseStatus status, int pageNumber, int pageSize);
+    /**
+     * The calling shop's orders.
+     *
+     * @param search free text matched against the order id, the recipient's name and
+     *               phone, and the titles of the products in the order. Null or blank
+     *               lists everything.
+     */
+    Page<PurchaseResponse> findSellerOrders(PurchaseStatus status, String search,
+                                            int pageNumber, int pageSize);
+
+    /** Order counts per state and takings, for the shop's order dashboard. */
+    SellerOrderSummaryResponse summariseMyOrders();
 
     /** Seller confirms -> DECREMENTS STOCK. */
     PurchaseResponse confirm(UUID uuid);
