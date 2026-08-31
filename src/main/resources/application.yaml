@@ -21,6 +21,40 @@ minio:
   # for why that is tolerable here and nowhere else.
   allowed-document-types: ${MINIO_ALLOWED_DOCUMENT_TYPES:application/pdf,image/jpeg,image/png,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword}
 
+# Bakong KHQR — how sellers pay for subscriptions.
+#
+# Everything here except api-token is public: it is encoded into the QR itself and shown
+# to whoever is paying. The token is the one secret, and it is a JWT with a fixed expiry
+# of roughly 90 days that Bakong will not renew on its own. When it lapses every check
+# answers 401, which BakongClient reports as such rather than reading as "not paid" —
+# renew it at https://api-bakong.nbc.gov.kh/register and set BAKONG_API_TOKEN.
+#
+# With no token set, subscribing refuses with 503 instead of issuing a QR nobody can
+# pay, which is the correct behaviour for a fresh checkout and for the test suite.
+bakong:
+  # Production. The sandbox is https://sit-api-bakong.nbc.gov.kh and tokens are not
+  # interchangeable between the two.
+  base-url: ${BAKONG_BASE_URL:https://api-bakong.nbc.gov.kh}
+  api-token: ${BAKONG_API_TOKEN:}
+  account-id: ${BAKONG_ACCOUNT_ID:ratanak_thai@bkrt}
+  # KHQR caps these: 25 characters for the name, 15 for the city. Checked at startup.
+  merchant-name: ${BAKONG_MERCHANT_NAME:Anajak Store}
+  merchant-city: ${BAKONG_MERCHANT_CITY:PHNOM PENH}
+  merchant-id: ${BAKONG_MERCHANT_ID:1516169}
+  acquiring-bank: ${BAKONG_ACQUIRING_BANK:ACLEDA Bank Plc}
+  mobile-number: ${BAKONG_MOBILE_NUMBER:855964735982}
+  store-label: ${BAKONG_STORE_LABEL:Toul Kork}
+  terminal-label: ${BAKONG_TERMINAL_LABEL:phsardigital}
+  # Written into the QR, so banking apps enforce it too rather than merely this server.
+  qr-validity: ${BAKONG_QR_VALIDITY:10m}
+  # Covers the gap between a bank debiting the payer and Bakong reporting it, before a
+  # lapsed payment is written off.
+  expiry-grace: ${BAKONG_EXPIRY_GRACE:5m}
+  sweep-interval: ${BAKONG_SWEEP_INTERVAL:5m}
+  sweep-batch-size: ${BAKONG_SWEEP_BATCH_SIZE:50}
+  connect-timeout: ${BAKONG_CONNECT_TIMEOUT:5s}
+  read-timeout: ${BAKONG_READ_TIMEOUT:15s}
+
 spring:
   application:
     name: phsardigital

@@ -43,6 +43,12 @@ dependencies {
     annotationProcessor 'org.mapstruct:mapstruct-processor:1.6.3'
 
     implementation 'io.minio:minio:8.5.10'
+
+    // The KHQR payload is an EMVCo TLV string whose tag layout, field lengths and
+    // CRC the National Bank of Cambodia specifies; a QR that gets any of it wrong
+    // is simply refused by the banking apps that scan it. This is NBC's own SDK,
+    // so the spec is encoded once, by its authors, rather than reimplemented here.
+    implementation 'kh.gov.nbc.bakong_khqr:sdk-java:1.0.0.17'
 }
 
 tasks.named('test') {

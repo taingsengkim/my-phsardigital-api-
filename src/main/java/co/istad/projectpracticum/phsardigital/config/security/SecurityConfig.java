@@ -111,6 +111,10 @@ public class SecurityConfig {
                         // require a subscriber. Everything else here is per-seller.
                         .requestMatchers(HttpMethod.GET, "/api/v1/subscriptions/plans").permitAll()
                         .requestMatchers("/api/v1/subscriptions/**").hasAnyRole("SELLER", "ADMIN")
+                        // Subscriptions are the only thing paid for by KHQR today, and
+                        // only a seller buys one. Ownership is enforced per payment as
+                        // well: PaymentServiceImpl answers 404 for somebody else's.
+                        .requestMatchers("/api/v1/payments/**").hasAnyRole("SELLER", "ADMIN")
                         // The counter is the seller's own till: only they ring up on it.
                         .requestMatchers("/api/v1/pos/**").hasAnyRole("SELLER", "ADMIN")
                         .requestMatchers("/api/v1/purchases/seller/**").hasAnyRole("SELLER", "ADMIN")

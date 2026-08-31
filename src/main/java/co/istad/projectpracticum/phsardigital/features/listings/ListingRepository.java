@@ -89,6 +89,14 @@ public interface ListingRepository extends JpaRepository<Listing, UUID>, JpaSpec
      */
     long countBySellerProfile_SellerIdAndStatusNot(String sellerId, ListingStatus status);
 
+    /**
+     * As above, for the several statuses that do not consume a plan slot: one the
+     * seller retired themselves, and one an admin took down. A listing removed by
+     * moderation must not go on costing the seller a slot they cannot free.
+     */
+    long countBySellerProfile_SellerIdAndStatusNotIn(String sellerId,
+                                                     Collection<ListingStatus> statuses);
+
     long countByStatus(ListingStatus status);
 
     /**

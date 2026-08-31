@@ -1,11 +1,18 @@
 package co.istad.projectpracticum.phsardigital.features.subscription;
 
 import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
+import co.istad.projectpracticum.phsardigital.core.money.Money;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingRepository;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingStatus;
+import co.istad.projectpracticum.phsardigital.features.payments.Payment;
+import co.istad.projectpracticum.phsardigital.features.payments.PaymentCurrency;
+import co.istad.projectpracticum.phsardigital.features.payments.PaymentPurpose;
+import co.istad.projectpracticum.phsardigital.features.payments.PaymentService;
+import co.istad.projectpracticum.phsardigital.features.payments.dto.PaymentResponse;
 import co.istad.projectpracticum.phsardigital.features.seller.SellerAccessGuard;
 import co.istad.projectpracticum.phsardigital.features.subscription.dto.SellerSubscriptionResponse;
 import co.istad.projectpracticum.phsardigital.features.subscription.dto.SubscribeRequest;
+import co.istad.projectpracticum.phsardigital.features.subscription.dto.SubscriptionCheckoutResponse;
 import co.istad.projectpracticum.phsardigital.features.subscription.dto.SubscriptionPlanResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -14,9 +21,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.time.LocalDateTime;
+import java.math.BigDecimal;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -24,15 +33,25 @@ import java.util.Optional;
 public class SubscriptionServiceImpl implements SubscriptionService {
 
     /**
-     * Archived listings do not count against a plan, so a seller can retire old
-     * stock to make room instead of being forced to upgrade or delete history.
+     * Statuses that do not count against a plan.
+     *
+     * <p>Archived, so a seller can retire old stock to make room instead of being
+     * forced to upgrade or delete history. Removed, because a listing an admin took
+     * down is not one the seller can free up, and charging them a slot for it forever
+     * would turn a moderation decision into a billing one.
+     *
+     * <p>Deliberately a short explicit list: any status added later counts by default
+     * rather than silently slipping past the limit.
      */
-    private static final ListingStatus UNCOUNTED_STATUS = ListingStatus.ARCHIVED;
+    private static final Set<ListingStatus> UNCOUNTED_STATUSES =
+            EnumSet.of(ListingStatus.ARCHIVED, ListingStatus.REMOVED);
 
     private final SellerSubscriptionRepository subscriptionRepository;
     private final SubscriptionPlanRepository planRepository;
     private final ListingRepository listingRepository;
     private final SellerAccessGuard sellerAccessGuard;
+    private final SubscriptionActivation activation;
+    private final PaymentService paymentService;
 
     @Override
     @Transactional(readOnly = true)
@@ -55,7 +74,7 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
     @Override
     @Transactional
-    public SellerSubscriptionResponse subscribe(SubscribeRequest request) {
+    public SubscriptionCheckoutResponse subscribe(SubscribeRequest request) {
         String sellerId = AuthUtils.extractUserId();
         // A suspended shop must not be able to buy its way back in.
         sellerAccessGuard.requireActiveSeller(sellerId);
@@ -72,20 +91,21 @@ public class SubscriptionServiceImpl implements SubscriptionService {
                     "The " + plan.getDisplayName() + " plan is no longer offered.");
         }
 
-        SellerSubscription subscription = subscriptionRepository.findById(sellerId)
-                .orElseGet(() -> new SellerSubscription(sellerId));
+        BigDecimal price = Money.of(plan.getPriceUsd());
+        // A plan priced at nothing has nothing to collect, and sending somebody to a
+        // payment app for $0.00 would be absurd — KHQR will not even encode it, since a
+        // zero amount makes a static QR rather than a dynamic one.
+        if (price == null || price.signum() <= 0) {
+            SellerSubscription granted = activation.activate(sellerId, plan);
+            return SubscriptionCheckoutResponse.activated(plan, toResponse(granted));
+        }
 
-        LocalDateTime now = LocalDateTime.now();
-        // Extending from the current expiry rather than from now, so changing plan
-        // mid-period does not silently forfeit the days already paid for.
-        LocalDateTime base = subscription.isCurrentlyActive() ? subscription.getExpiresAt() : now;
-
-        subscription.setPlanCode(plan.getCode());
-        subscription.setStatus(SubscriptionStatus.ACTIVE);
-        subscription.setStartedAt(subscription.getStartedAt() == null ? now : subscription.getStartedAt());
-        subscription.setExpiresAt(base.plusDays(plan.getDurationDays()));
-
-        return toResponse(subscriptionRepository.save(subscription));
+        // Nothing is granted here. The seller gets a QR; the plan starts when
+        // PaymentServiceImpl hears from Bakong that the transfer landed, which is what
+        // SubscriptionPaymentSettlement does with it.
+        Payment payment = paymentService.start(PaymentPurpose.SUBSCRIPTION, plan.getCode(),
+                sellerId, price, PaymentCurrency.USD);
+        return SubscriptionCheckoutResponse.awaitingPayment(plan, PaymentResponse.of(payment));
     }
 
     @Override
@@ -151,7 +171,8 @@ public class SubscriptionServiceImpl implements SubscriptionService {
     }
 
     private long countListings(String sellerId) {
-        return listingRepository.countBySellerProfile_SellerIdAndStatusNot(sellerId, UNCOUNTED_STATUS);
+        return listingRepository.countBySellerProfile_SellerIdAndStatusNotIn(
+                sellerId, UNCOUNTED_STATUSES);
     }
 
     /**
