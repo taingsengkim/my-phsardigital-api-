@@ -4,6 +4,7 @@ import co.istad.projectpracticum.phsardigital.features.review.dto.ReviewReplyReq
 import co.istad.projectpracticum.phsardigital.features.review.dto.ReviewReplyResponse;
 import co.istad.projectpracticum.phsardigital.features.review.dto.ReviewRequest;
 import co.istad.projectpracticum.phsardigital.features.review.dto.ReviewResponse;
+import co.istad.projectpracticum.phsardigital.features.review.dto.ReviewSummaryResponse;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -12,6 +13,22 @@ import java.util.UUID;
 
 public interface ReviewService {
     Page<ReviewResponse> getReviewsForListing(UUID listingUuid, Pageable pageable);
+
+    /**
+     * One product's star breakdown, for the bars above its review list.
+     *
+     * @throws org.springframework.web.server.ResponseStatusException 404 when the
+     *         product does not exist or is not publicly visible
+     */
+    ReviewSummaryResponse getListingSummary(UUID listingUuid);
+
+    /**
+     * A shop's star breakdown across every product it sells.
+     *
+     * @throws org.springframework.web.server.ResponseStatusException 404 for an unknown
+     *         shop, rather than an empty breakdown that reads as "nobody reviewed it"
+     */
+    ReviewSummaryResponse getSellerSummary(String sellerId);
 
     ReviewResponse createReview(UUID listingUuid, ReviewRequest request);
 

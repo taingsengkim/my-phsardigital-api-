@@ -5,6 +5,7 @@ import co.istad.projectpracticum.phsardigital.features.review.dto.ReviewReplyReq
 import co.istad.projectpracticum.phsardigital.features.review.dto.ReviewReplyResponse;
 import co.istad.projectpracticum.phsardigital.features.review.dto.ReviewRequest;
 import co.istad.projectpracticum.phsardigital.features.review.dto.ReviewResponse;
+import co.istad.projectpracticum.phsardigital.features.review.dto.ReviewSummaryResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +33,24 @@ public class ReviewController {
             @PathVariable UUID listingUuid,
             @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
         return reviewService.getReviewsForListing(listingUuid, pageable);
+    }
+
+    /**
+     * A product's rating and its star breakdown, over every review rather than the page
+     * on screen — the bars above the review list.
+     *
+     * <p>Literal {@code /summary} segments, so both routes here are matched before the
+     * {uuid} and {sellerId} patterns beside them.
+     */
+    @GetMapping("/listings/{listingUuid}/summary")
+    public ReviewSummaryResponse getListingReviewSummary(@PathVariable UUID listingUuid) {
+        return reviewService.getListingSummary(listingUuid);
+    }
+
+    /** The same, for a whole shop: its badge and the breakdown on its storefront. */
+    @GetMapping("/sellers/{sellerId}/summary")
+    public ReviewSummaryResponse getSellerReviewSummary(@PathVariable String sellerId) {
+        return reviewService.getSellerSummary(sellerId);
     }
 
 

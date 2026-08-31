@@ -228,6 +228,29 @@ public interface PurchaseRepository extends JpaRepository<Purchase, UUID> {
                                                              PurchaseStatus status);
 
     /**
+     * Which buyer-and-product pairs actually appear in a completed order — what earns a
+     * review its "verified purchase" badge.
+     *
+     * <p>Stronger than the test above, and deliberately so: the right to review is
+     * granted per shop, because buying one size and reviewing the product is ordinary,
+     * but the badge claims something narrower — that this person bought this exact thing.
+     *
+     * <p>Takes both id sets at once so a page of reviews costs one query instead of one
+     * per row. The database returns the pairs that genuinely exist, so the cross product
+     * of the two lists is narrowed here rather than by the caller.
+     *
+     * @return {@code [buyerId, listingUuid]} for pairs with a completed order between them
+     */
+    @Query("SELECT DISTINCT p.buyerId, i.listing.uuid FROM PurchaseItem i "
+            + "JOIN i.purchase p "
+            + "WHERE p.status = :status "
+            + "AND p.buyerId IN :buyerIds "
+            + "AND i.listing.uuid IN :listingUuids")
+    List<Object[]> completedPurchasePairs(@Param("status") PurchaseStatus status,
+                                          @Param("buyerIds") Collection<String> buyerIds,
+                                          @Param("listingUuids") Collection<UUID> listingUuids);
+
+    /**
      * Merchandise value over orders in one status — what buyers paid sellers, not
      * platform earnings.
      *

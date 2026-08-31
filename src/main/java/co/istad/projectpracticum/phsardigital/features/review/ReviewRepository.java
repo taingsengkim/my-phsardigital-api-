@@ -60,6 +60,24 @@ public interface ReviewRepository extends JpaRepository<Review , UUID> {
     long countByListing_Uuid(UUID listingUuid);
 
     /**
+     * How many reviews a shop has at each star, for the breakdown bars on a storefront.
+     *
+     * <p>Grouped in the database rather than counted from a page of reviews, which would
+     * describe only the twenty on screen and quietly mislabel them as the whole picture.
+     *
+     * @return {@code [rating, count]} for each star anybody has given; a star nobody has
+     *         given is absent rather than a zero row
+     */
+    @Query("SELECT r.rating, COUNT(r) FROM Review r "
+            + "WHERE r.seller.sellerId = :sellerId GROUP BY r.rating")
+    List<Object[]> ratingBreakdownForSeller(@Param("sellerId") String sellerId);
+
+    /** One product's breakdown, on the same terms as {@link #ratingBreakdownForSeller}. */
+    @Query("SELECT r.rating, COUNT(r) FROM Review r "
+            + "WHERE r.listing.uuid = :listingUuid GROUP BY r.rating")
+    List<Object[]> ratingBreakdownForListing(@Param("listingUuid") UUID listingUuid);
+
+    /**
      * Ratings for a whole page of products in one query, since a grid shows stars on
      * every card and asking per card is an N+1.
      *

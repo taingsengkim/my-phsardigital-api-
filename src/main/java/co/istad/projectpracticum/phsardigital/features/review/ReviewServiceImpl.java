@@ -14,6 +14,7 @@ import co.istad.projectpracticum.phsardigital.features.review.dto.ReviewReplyReq
 import co.istad.projectpracticum.phsardigital.features.review.dto.ReviewReplyResponse;
 import co.istad.projectpracticum.phsardigital.features.review.dto.ReviewRequest;
 import co.istad.projectpracticum.phsardigital.features.review.dto.ReviewResponse;
+import co.istad.projectpracticum.phsardigital.features.review.dto.ReviewSummaryResponse;
 import co.istad.projectpracticum.phsardigital.features.review.review_reply.ReviewReply;
 import co.istad.projectpracticum.phsardigital.features.review.review_reply.ReviewReplyMapper;
 import co.istad.projectpracticum.phsardigital.features.review.review_reply.ReviewReplyRepository;
@@ -30,8 +31,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -61,8 +64,36 @@ public class ReviewServiceImpl implements ReviewService {
         if (!listingVisibility.isVisible(listing)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found");
         }
-        return reviewRepository.findByListing(listing, pageable)
-                .map(reviewMapper::toResponse);
+        return withVerifiedBadges(reviewRepository.findByListing(listing, pageable));
+    }
+
+    @Override
+    public ReviewSummaryResponse getListingSummary(UUID listingUuid) {
+        Listing listing = listingRepository.findById(listingUuid)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found"));
+        if (!listingVisibility.isVisible(listing)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Listing not found");
+        }
+        return ReviewSummaryResponse.of(
+                toStarCounts(reviewRepository.ratingBreakdownForListing(listingUuid)));
+    }
+
+    @Override
+    public ReviewSummaryResponse getSellerSummary(String sellerId) {
+        // Resolved first for the same reason getReviewsForSeller does it: an unknown shop
+        // should answer 404, not an empty breakdown that reads as "nobody has reviewed it".
+        sellerRepository.findById(sellerId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Shop not found"));
+        return ReviewSummaryResponse.of(
+                toStarCounts(reviewRepository.ratingBreakdownForSeller(sellerId)));
+    }
+
+    private static Map<Integer, Long> toStarCounts(List<Object[]> rows) {
+        Map<Integer, Long> counts = new HashMap<>();
+        for (Object[] row : rows) {
+            counts.put(((Number) row[0]).intValue(), ((Number) row[1]).longValue());
+        }
+        return counts;
     }
 
     @Override
@@ -109,7 +140,8 @@ public class ReviewServiceImpl implements ReviewService {
         // 7. Update listing rating aggregate
 //        updateListingRating(listing);
 
-        return reviewMapper.toResponse(saved);
+        return reviewMapper.toResponse(saved)
+                .withVerifiedPurchase(isVerifiedPurchase(userId, listingUuid));
     }
 
     @Override
@@ -117,8 +149,7 @@ public class ReviewServiceImpl implements ReviewService {
         String userId = AuthUtils.extractUserId();
         UserProfile buyer = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
-        return reviewRepository.findByBuyer(buyer, pageable)
-                .map(reviewMapper::toResponse);
+        return withVerifiedBadges(reviewRepository.findByBuyer(buyer, pageable));
     }
 
     @Override
@@ -145,7 +176,9 @@ public class ReviewServiceImpl implements ReviewService {
 
         Review updated = reviewRepository.save(review);
 //        updateListingRating(review.getListing());
-        return reviewMapper.toResponse(updated);
+        return reviewMapper.toResponse(updated)
+                .withVerifiedPurchase(
+                        isVerifiedPurchase(userId, review.getListing().getUuid()));
     }
 
     @Override
@@ -162,6 +195,47 @@ public class ReviewServiceImpl implements ReviewService {
         Listing listing = review.getListing();
         reviewRepository.delete(review);
 //        updateListingRating(listing);
+    }
+
+    /**
+     * Attaches the verified-purchase badge to a whole page in one query.
+     *
+     * <p>Asking per review would be an N+1 on a list that is paged precisely because it
+     * gets long. The pairs that matter are (reviewer, product); the database is handed
+     * both sets and returns only the pairs that genuinely have a completed order behind
+     * them, so the cross product never materialises here.
+     */
+    private Page<ReviewResponse> withVerifiedBadges(Page<Review> reviews) {
+        List<Review> content = reviews.getContent();
+        if (content.isEmpty()) {
+            return reviews.map(reviewMapper::toResponse);
+        }
+
+        Set<String> buyerIds = content.stream()
+                .map(review -> review.getBuyer().getId())
+                .collect(Collectors.toSet());
+        Set<UUID> listingUuids = content.stream()
+                .map(review -> review.getListing().getUuid())
+                .collect(Collectors.toSet());
+
+        Set<String> verified = purchaseRepository
+                .completedPurchasePairs(QUALIFYING_PURCHASE, buyerIds, listingUuids).stream()
+                .map(row -> verifiedKey((String) row[0], (UUID) row[1]))
+                .collect(Collectors.toSet());
+
+        return reviews.map(review -> reviewMapper.toResponse(review)
+                .withVerifiedPurchase(verified.contains(
+                        verifiedKey(review.getBuyer().getId(), review.getListing().getUuid()))));
+    }
+
+    /** Whether one reviewer bought one product in an order that completed. */
+    private boolean isVerifiedPurchase(String buyerId, UUID listingUuid) {
+        return !purchaseRepository.completedPurchasePairs(
+                QUALIFYING_PURCHASE, Set.of(buyerId), Set.of(listingUuid)).isEmpty();
+    }
+
+    private static String verifiedKey(String buyerId, UUID listingUuid) {
+        return buyerId + '|' + listingUuid;
     }
 
     /**
@@ -203,8 +277,7 @@ public class ReviewServiceImpl implements ReviewService {
         SellerProfile seller = sellerRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Seller profile not found"));
-        return reviewRepository.findBySeller(seller, pageable)
-                .map(reviewMapper::toResponse);
+        return withVerifiedBadges(reviewRepository.findBySeller(seller, pageable));
     }
 
     @Override
@@ -214,8 +287,7 @@ public class ReviewServiceImpl implements ReviewService {
         SellerProfile seller = sellerRepository.findById(sellerId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Shop not found"));
-        return reviewRepository.findBySeller(seller, pageable)
-                .map(reviewMapper::toResponse);
+        return withVerifiedBadges(reviewRepository.findBySeller(seller, pageable));
     }
 
     @Override

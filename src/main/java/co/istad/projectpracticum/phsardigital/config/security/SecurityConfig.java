@@ -70,6 +70,13 @@ public class SecurityConfig {
                         // A single * rather than **, so anything nested under a shop
                         // later has to be opened up deliberately.
                         .requestMatchers(HttpMethod.GET,"/api/v1/reviews/sellers/me").authenticated()
+                        // The star breakdowns summarise reviews that are already public,
+                        // and both sit a segment deeper than the wildcards below, which
+                        // match one segment only — without their own rules they would
+                        // fall through to authenticated() and a logged-out visitor would
+                        // see a shop's reviews but not its rating.
+                        .requestMatchers(HttpMethod.GET,"/api/v1/reviews/sellers/*/summary").permitAll()
+                        .requestMatchers(HttpMethod.GET,"/api/v1/reviews/listings/*/summary").permitAll()
                         .requestMatchers(HttpMethod.GET,"/api/v1/reviews/sellers/*").permitAll()
                         // Read only, matching the shop's reviews above: posting, editing
                         // and deleting still fall through to authenticated().
