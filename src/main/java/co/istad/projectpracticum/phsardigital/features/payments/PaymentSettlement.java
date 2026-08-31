@@ -23,4 +23,16 @@ public interface PaymentSettlement {
      * a single invocation, because retries after a failed transaction land here again.
      */
     void settle(Payment payment);
+
+    /**
+     * Undoes whatever was held while the payment was open, once it is written off.
+     *
+     * <p>Called only after Bakong has confirmed no such transfer exists — the sweeper
+     * never expires a payment on the clock alone. Nothing to do for a purpose that holds
+     * nothing, which is why it defaults to doing nothing; a counter sale, which has
+     * already taken the goods out of stock, gives them back here.
+     */
+    default void onExpired(Payment payment) {
+        // Most purposes reserve nothing while they wait.
+    }
 }

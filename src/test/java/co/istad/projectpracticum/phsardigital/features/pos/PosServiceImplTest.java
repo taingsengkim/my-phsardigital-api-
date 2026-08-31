@@ -199,8 +199,9 @@ class PosServiceImplTest {
     }
 
     private PosServiceImpl service() {
+        // Null payment service: every sale here is cash, which never opens a payment.
         return new PosServiceImpl(purchaseRepository, listingRepository, purchaseMapper,
-                sellerAccessGuard, stockLedger, entityManager);
+                sellerAccessGuard, stockLedger, entityManager, null);
     }
 
     private static MockedStatic<AuthUtils> authenticatedSeller() {

@@ -69,6 +69,26 @@ public class SellerProfile extends BasedEntity {
     private FileUpload coverFile;
 
     /**
+     * The shop's own Bakong account, in {@code name@bank} form, that a counter QR is
+     * drawn on.
+     *
+     * <p>The money moves straight from the customer to this account: the marketplace
+     * never holds a shop's takings, which is what keeps it out of being a payment
+     * institution. Null until the shop supplies one, and KHQR at the counter is refused
+     * until then rather than quietly falling back to somebody else's account.
+     */
+    @Column(name = "bakong_account_id", length = 32)
+    private String bakongAccountId;
+
+    /**
+     * The name the payer sees in their banking app when they scan. Falls back to the
+     * business name, and is separate because KHQR allows only 25 characters and a legal
+     * business name is often longer than that.
+     */
+    @Column(name = "bakong_account_name", length = 25)
+    private String bakongAccountName;
+
+    /**
      * Shop pin, matching the precision {@code Address} uses for delivery
      * coordinates. Stored as the pair rather than only a Google Maps link so the
      * shop can be placed on a map and searched by distance without parsing a URL.

@@ -51,6 +51,7 @@ class PosPaymentMethodTest {
     @Mock private SellerAccessGuard sellerAccessGuard;
     @Mock private StockLedger stockLedger;
     @Mock private EntityManager entityManager;
+    @Mock private co.istad.projectpracticum.phsardigital.features.payments.PaymentService paymentService;
 
     private PosServiceImpl service;
     private UUID listingUuid;
@@ -58,10 +59,13 @@ class PosPaymentMethodTest {
     @BeforeEach
     void setUp() {
         service = new PosServiceImpl(purchaseRepository, listingRepository, purchaseMapper,
-                sellerAccessGuard, stockLedger, entityManager);
+                sellerAccessGuard, stockLedger, entityManager, paymentService);
 
         SellerProfile seller = new SellerProfile(SELLER_ID);
         seller.setIsActive(true);
+        seller.setBusinessName("Anajak Store");
+        seller.setCity("PHNOM PENH");
+        seller.setBakongAccountId("shop_owner@aclb");
         when(sellerAccessGuard.requireActiveSellerForTrade(SELLER_ID)).thenReturn(seller);
 
         listingUuid = UUID.randomUUID();
@@ -86,10 +90,40 @@ class PosPaymentMethodTest {
     }
 
     @Test
-    void aKhqrSaleIsRecordedAsSuchAndNeedsNoChangeCalculated() {
+    void aKhqrSaleWaitsForTheMoneyRatherThanCompletingOnTheSpot() {
+        // The customer has not scanned yet. Completing now would record money that may
+        // never arrive.
         Purchase sale = sell(request(PaymentMethod.KHQR, null));
 
         assertThat(sale.getPaymentMethod()).isEqualTo(PaymentMethod.KHQR);
+        assertThat(sale.getStatus()).isEqualTo(co.istad.projectpracticum.phsardigital
+                .features.purchases.PurchaseStatus.PENDING);
+        assertThat(sale.getCompletedAt()).isNull();
+    }
+
+    @Test
+    void aCashSaleIsDoneTheMomentItIsRungUp() {
+        Purchase sale = sell(request(PaymentMethod.CASH, new BigDecimal("5.00")));
+
+        assertThat(sale.getStatus()).isEqualTo(co.istad.projectpracticum.phsardigital
+                .features.purchases.PurchaseStatus.COMPLETED);
+        assertThat(sale.getCompletedAt()).isNotNull();
+    }
+
+    @Test
+    void aShopWithNoBakongAccountCannotTakeKhqrAndIsToldBeforeStockMoves() {
+        SellerProfile noAccount = new SellerProfile(SELLER_ID);
+        noAccount.setIsActive(true);
+        when(sellerAccessGuard.requireActiveSellerForTrade(SELLER_ID)).thenReturn(noAccount);
+
+        try (MockedStatic<AuthUtils> auth = authenticatedSeller()) {
+            assertThatThrownBy(() -> service.sell(request(PaymentMethod.KHQR, null)))
+                    .isInstanceOf(ResponseStatusException.class)
+                    .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                            .isEqualTo(HttpStatus.CONFLICT));
+        }
+
+        verify(purchaseRepository, never()).save(any());
     }
 
     @Test

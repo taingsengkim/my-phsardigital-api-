@@ -35,6 +35,22 @@ public interface PaymentService {
                   BigDecimal amount, PaymentCurrency currency);
 
     /**
+     * Issues a QR drawn on somebody else's Bakong account — a shop collecting at its own
+     * counter rather than the marketplace collecting a subscription.
+     *
+     * <p>The money never passes through this platform. Settlement checks the transfer
+     * landed in {@code accountId} specifically, recorded on the payment so it cannot
+     * drift after the QR was issued.
+     *
+     * @param accountId   the collecting account, {@code name@bank}
+     * @param accountName what the payer sees when they scan
+     * @param city        the shop's city, for the same block of the payload
+     */
+    Payment startForAccount(PaymentPurpose purpose, String reference, String payerId,
+                            BigDecimal amount, PaymentCurrency currency,
+                            String accountId, String accountName, String city);
+
+    /**
      * Asks Bakong whether this payment arrived, and grants what it bought if so.
      *
      * <p>Safe to call repeatedly — that is the intended use, since it is how a client

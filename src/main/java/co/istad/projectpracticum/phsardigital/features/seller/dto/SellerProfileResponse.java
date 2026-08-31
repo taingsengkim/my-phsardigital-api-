@@ -32,6 +32,8 @@ public record SellerProfileResponse(
         String phoneNumber,
         String biography,
         List<String> socialLink,
+        String bakongAccountId,
+        String bakongAccountName,
         Double averageRating,
         Long reviewCount,
         String suspensionReason,

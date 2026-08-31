@@ -45,8 +45,15 @@ class PaymentServiceImplTest {
     private KhqrGenerator khqrGenerator;
     @Mock
     private BakongClient bakongClient;
+    @Mock
+    private co.istad.projectpracticum.phsardigital.features.payments.khqr.BakongProps props;
     @InjectMocks
     private PaymentServiceImpl service;
+
+    @org.junit.jupiter.api.BeforeEach
+    void platformCollectsToItsOwnAccount() {
+        when(props.getAccountId()).thenReturn("ratanak_thai@bkrt");
+    }
 
     @Test
     void pressingSubscribeTwiceReturnsTheSameQrRatherThanMintingASecond() {
@@ -182,6 +189,7 @@ class PaymentServiceImplTest {
         payment.setAmount(PRICE);
         payment.setCurrency(PaymentCurrency.USD);
         payment.setStatus(PaymentStatus.PENDING);
+        payment.setCollectingAccountId("ratanak_thai@bkrt");
         payment.setQr("00020101021229...6304ABCD");
         payment.setMd5("0123456789abcdef0123456789abcdef");
         payment.setExpiresAt(expiresAt);

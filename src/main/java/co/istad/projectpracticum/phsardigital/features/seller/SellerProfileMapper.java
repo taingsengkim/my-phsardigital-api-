@@ -103,6 +103,8 @@ public abstract class SellerProfileMapper {
                 profile.getPhoneNumber(),
                 profile.getBiography(),
                 profile.getSocialLink(),
+                profile.getBakongAccountId(),
+                profile.getBakongAccountName(),
                 round(averageRating),
                 reviewCount,
                 discloseSuspension ? profile.getSuspensionReason() : null,

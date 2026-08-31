@@ -113,9 +113,18 @@ class PaymentSettler {
     @Transactional
     void expire(UUID uuid) {
         paymentRepository.findByUuidForUpdate(uuid).ifPresent(payment -> {
-            if (payment.getStatus() == PaymentStatus.PENDING) {
-                payment.setStatus(PaymentStatus.EXPIRED);
-                paymentRepository.save(payment);
+            if (payment.getStatus() != PaymentStatus.PENDING) {
+                return;
+            }
+            payment.setStatus(PaymentStatus.EXPIRED);
+            paymentRepository.save(payment);
+
+            // Inside the same transaction as the status write, so a handler that fails
+            // leaves the payment pending for the next sweep rather than expiring it
+            // while whatever it was holding stays held.
+            PaymentSettlement settlement = settlements.get(payment.getPurpose());
+            if (settlement != null) {
+                settlement.onExpired(payment);
             }
         });
     }
@@ -131,10 +140,12 @@ class PaymentSettler {
      * of it would be unwise.
      */
     private void requireTransactionMatches(Payment payment, BakongTransaction transaction) {
-        String expectedAccount = props.getAccountId();
+        // The account recorded on the payment, not the one in configuration: a counter
+        // sale collects into the shop's own account, and only the payment knows which.
+        String expectedAccount = payment.getCollectingAccountId();
         if (transaction.toAccountId() != null
                 && !transaction.toAccountId().equalsIgnoreCase(expectedAccount)) {
-            log.error("Payment {} matched a transfer to {} but this server collects to {}",
+            log.error("Payment {} matched a transfer to {} but was drawn on {}",
                     payment.getUuid(), transaction.toAccountId(), expectedAccount);
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
                     "This payment could not be verified. Contact support quoting "

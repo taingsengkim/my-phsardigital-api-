@@ -2,6 +2,7 @@ package co.istad.projectpracticum.phsardigital.features.payments.khqr;
 
 import co.istad.projectpracticum.phsardigital.features.payments.PaymentCurrency;
 import kh.gov.nbc.bakong_khqr.BakongKHQR;
+import kh.gov.nbc.bakong_khqr.model.IndividualInfo;
 import kh.gov.nbc.bakong_khqr.model.KHQRCurrency;
 import kh.gov.nbc.bakong_khqr.model.KHQRData;
 import kh.gov.nbc.bakong_khqr.model.KHQRResponse;
@@ -42,6 +43,10 @@ public class KhqrGenerator {
     /** {@code Constant.SUCCESS_CODE} in the SDK; anything else carries an error code. */
     private static final int SDK_SUCCESS = 0;
 
+    /** KHQR's own ceilings; see {@code KHQRValidation} in the NBC SDK. */
+    private static final int MAX_MERCHANT_NAME = 25;
+    private static final int MAX_MERCHANT_CITY = 15;
+
     private final BakongProps props;
 
     /**
@@ -62,9 +67,7 @@ public class KhqrGenerator {
                     "Online payment is not configured on this server.");
         }
         requirePayableAmount(amount, currency);
-
-        Duration validity = props.getQrValidity();
-        Instant expiry = Instant.now().plus(validity);
+        Instant expiry = Instant.now().plus(props.getQrValidity());
 
         MerchantInfo merchant = new MerchantInfo();
         merchant.setBakongAccountId(props.getAccountId());
@@ -80,20 +83,70 @@ public class KhqrGenerator {
         merchant.setTerminalLabel(props.getTerminalLabel());
         merchant.setExpirationTimestamp(expiry.toEpochMilli());
 
-        KHQRResponse<KHQRData> response = BakongKHQR.generateMerchant(merchant);
+        return toPayload(BakongKHQR.generateMerchant(merchant), paymentUuid, expiry);
+    }
+
+    /**
+     * Mints a QR drawn on somebody else's Bakong account — a shop collecting at its own
+     * counter.
+     *
+     * <p>An individual code rather than a merchant one, because a merchant code requires
+     * a merchant id and acquiring bank issued by a bank, and the shops using this have an
+     * ordinary Bakong account and nothing more. The money moves straight from the
+     * customer to {@code accountId}; the marketplace is not in the path and never holds
+     * it.
+     *
+     * @param accountId   the collecting account, {@code name@bank}
+     * @param accountName what the payer sees in their banking app, at most 25 characters
+     * @param city        at most 15 characters
+     */
+    public KhqrPayload generateForAccount(UUID paymentUuid, String accountId, String accountName,
+                                          String city, BigDecimal amount, PaymentCurrency currency) {
+        if (!props.isConfigured()) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Online payment is not configured on this server.");
+        }
+        requirePayableAmount(amount, currency);
+        Instant expiry = Instant.now().plus(props.getQrValidity());
+
+        IndividualInfo individual = new IndividualInfo();
+        individual.setBakongAccountId(accountId);
+        individual.setMerchantName(trimTo(accountName, MAX_MERCHANT_NAME));
+        individual.setMerchantCity(trimTo(city, MAX_MERCHANT_CITY));
+        individual.setCurrency(toSdkCurrency(currency));
+        individual.setAmount(amount.doubleValue());
+        individual.setBillNumber(billNumberFor(paymentUuid));
+        individual.setTerminalLabel(props.getTerminalLabel());
+        individual.setExpirationTimestamp(expiry.toEpochMilli());
+
+        return toPayload(BakongKHQR.generateIndividual(individual), paymentUuid, expiry);
+    }
+
+    private KhqrPayload toPayload(KHQRResponse<KHQRData> response, UUID paymentUuid, Instant expiry) {
         KHQRStatus status = response.getKHQRStatus();
         if (status != null && status.getCode() != SDK_SUCCESS) {
-            // Every input here comes from our own configuration, never from the caller,
-            // so a rejection is our misconfiguration and not their bad request.
             log.error("KHQR generation failed for payment {}: code={} errorCode={} message={}",
                     paymentUuid, status.getCode(), status.getErrorCode(), status.getMessage());
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                    "Could not generate a payment QR. Check the Bakong merchant settings.");
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Could not generate a payment QR: " + status.getMessage());
         }
-
         KHQRData data = response.getData();
         return new KhqrPayload(data.getQr(), data.getMd5(),
                 LocalDateTime.ofInstant(expiry, ZoneId.systemDefault()));
+    }
+
+    /**
+     * KHQR caps the name and city, and a shop's registered business name is routinely
+     * longer than 25 characters. Truncating is better than refusing the sale over it —
+     * the account id is what the money follows, and the name is only what the payer
+     * reads on the confirmation screen.
+     */
+    private static String trimTo(String value, int max) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.length() <= max ? trimmed : trimmed.substring(0, max).trim();
     }
 
     /**

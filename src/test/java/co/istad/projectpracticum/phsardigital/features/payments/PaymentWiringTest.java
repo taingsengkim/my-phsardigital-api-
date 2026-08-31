@@ -52,14 +52,19 @@ class PaymentWiringTest {
                     PaymentExpirySweeper.class,
                     SubscriptionActivation.class,
                     SubscriptionPaymentSettlement.class,
-                    SubscriptionServiceImpl.class)
+                    SubscriptionServiceImpl.class,
+                    co.istad.projectpracticum.phsardigital.features.pos.PosPaymentSettlement.class)
             // The repositories and the access guard belong to features this one only
             // borrows; standing them up would drag in JPA and prove nothing extra.
             .withBean(PaymentRepository.class, () -> mock(PaymentRepository.class))
             .withBean(SellerSubscriptionRepository.class, () -> mock(SellerSubscriptionRepository.class))
             .withBean(SubscriptionPlanRepository.class, () -> mock(SubscriptionPlanRepository.class))
             .withBean(ListingRepository.class, () -> mock(ListingRepository.class))
-            .withBean(SellerAccessGuard.class, () -> mock(SellerAccessGuard.class));
+            .withBean(SellerAccessGuard.class, () -> mock(SellerAccessGuard.class))
+            .withBean(co.istad.projectpracticum.phsardigital.features.purchases.PurchaseRepository.class,
+                    () -> mock(co.istad.projectpracticum.phsardigital.features.purchases.PurchaseRepository.class))
+            .withBean(co.istad.projectpracticum.phsardigital.features.stock.StockLedger.class,
+                    () -> mock(co.istad.projectpracticum.phsardigital.features.stock.StockLedger.class));
 
     @Test
     void paymentsAndSubscriptionsWireUpWithoutACycle() {

@@ -58,6 +58,18 @@ public class Payment extends BasedEntity {
     private String payerId;
 
     /**
+     * The Bakong account this payment is collected into, recorded per payment rather
+     * than read from configuration.
+     *
+     * <p>A subscription is collected by the marketplace; a counter sale is collected by
+     * the shop that made it. Settlement checks the transfer landed <em>here</em>, so the
+     * account a payment was drawn on cannot drift after the QR was issued — which it
+     * would if the check read today's configuration, or today's shop profile.
+     */
+    @Column(name = "collecting_account_id", nullable = false, length = 32)
+    private String collectingAccountId;
+
+    /**
      * Snapshotted at issue, not read back from the plan. An admin may reprice a plan
      * while somebody has its QR open, and the QR — whose hash is already fixed — commits
      * us to the old price.

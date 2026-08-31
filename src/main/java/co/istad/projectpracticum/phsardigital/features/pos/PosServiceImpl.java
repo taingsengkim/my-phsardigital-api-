@@ -6,6 +6,11 @@ import co.istad.projectpracticum.phsardigital.features.listings.Listing;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingRepository;
 import co.istad.projectpracticum.phsardigital.features.pos.dto.PosSaleLineRequest;
 import co.istad.projectpracticum.phsardigital.features.pos.dto.PosSaleRequest;
+import co.istad.projectpracticum.phsardigital.features.payments.Payment;
+import co.istad.projectpracticum.phsardigital.features.payments.PaymentCurrency;
+import co.istad.projectpracticum.phsardigital.features.payments.PaymentPurpose;
+import co.istad.projectpracticum.phsardigital.features.payments.PaymentService;
+import co.istad.projectpracticum.phsardigital.features.payments.dto.PaymentResponse;
 import co.istad.projectpracticum.phsardigital.features.pos.dto.PosSaleResponse;
 import co.istad.projectpracticum.phsardigital.features.purchases.*;
 import co.istad.projectpracticum.phsardigital.features.seller.SellerAccessGuard;
@@ -35,6 +40,7 @@ public class PosServiceImpl implements PosService {
     private final SellerAccessGuard sellerAccessGuard;
     private final StockLedger stockLedger;
     private final EntityManager entityManager;
+    private final PaymentService paymentService;
 
     @Override
     @Transactional
@@ -50,13 +56,24 @@ public class PosServiceImpl implements PosService {
 
         SellerProfile seller = sellerAccessGuard.requireActiveSellerForTrade(sellerId);
 
+        PaymentMethod method = paymentMethodOf(request);
+        if (method == PaymentMethod.KHQR) {
+            requireCollectingAccount(seller);
+        }
+
         Purchase sale = new Purchase();
         sale.setUuid(request.saleUuid());
         sale.setSellerProfile(seller);
         sale.setChannel(PurchaseChannel.POS);
-        // A counter sale is done when it is rung up: the goods are already in the
-        // customer's hands, so there is no pending state to move through.
-        sale.setStatus(PurchaseStatus.COMPLETED);
+        // A cash sale is done when it is rung up: the goods are already in the customer's
+        // hands. A QR sale is not — the customer has yet to scan, and completing it now
+        // would be recording money that may never arrive, so it waits for Bakong.
+        sale.setStatus(method == PaymentMethod.KHQR
+                ? PurchaseStatus.PENDING
+                : PurchaseStatus.COMPLETED);
+        if (method != PaymentMethod.KHQR) {
+            sale.setCompletedAt(LocalDateTime.now());
+        }
         sale.setBuyerId(null);
         sale.setPaymentMethod(paymentMethodOf(request));
         sale.setRecipientName(trimToNull(request.customerName()));
@@ -87,12 +104,44 @@ public class PosServiceImpl implements PosService {
         applySoldAt(sale, request.soldAt());
 
         Purchase saved = purchaseRepository.save(sale);
-        return respond(saved, request);
+
+        // Opened after the sale exists, because the payment names it: settling the
+        // payment is what completes this sale, and expiring it is what gives the stock
+        // back. The QR is drawn on the shop's own account, so the money goes straight to
+        // them and this platform never holds it.
+        Payment payment = method == PaymentMethod.KHQR
+                ? paymentService.startForAccount(
+                        PaymentPurpose.POS_SALE, saved.getUuid().toString(), sellerId,
+                        saved.getTotalPrice(), PaymentCurrency.USD,
+                        seller.getBakongAccountId(), collectingName(seller), seller.getCity())
+                : null;
+
+        return respond(saved, request, payment);
     }
 
     /** A counter takes cash unless the till says otherwise. */
     private static PaymentMethod paymentMethodOf(PosSaleRequest request) {
         return request.paymentMethod() == null ? PaymentMethod.CASH : request.paymentMethod();
+    }
+
+    /**
+     * A QR has to be drawn on an account. Refused up front rather than after the stock
+     * has moved, so a shop that has not supplied one is told plainly instead of ending
+     * up with a sale nobody can pay.
+     */
+    private static void requireCollectingAccount(SellerProfile seller) {
+        String account = seller.getBakongAccountId();
+        if (account == null || account.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Add your Bakong account to your shop profile before taking KHQR "
+                            + "payments at the counter.");
+        }
+    }
+
+    /** What the payer reads when they scan; the business name unless one is set. */
+    private static String collectingName(SellerProfile seller) {
+        String name = seller.getBakongAccountName();
+        return name == null || name.isBlank() ? seller.getBusinessName() : name;
     }
 
     /**
@@ -165,7 +214,17 @@ public class PosServiceImpl implements PosService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "This sale UUID was already used for a different sale.");
         }
-        return respond(existing, request);
+        // A retried QR sale gets the same QR back: startForAccount hands back the live
+        // payment for this sale rather than minting a second one.
+        Payment payment = existing.getPaymentMethod() == PaymentMethod.KHQR
+                ? paymentService.startForAccount(
+                        PaymentPurpose.POS_SALE, existing.getUuid().toString(), sellerId,
+                        existing.getTotalPrice(), PaymentCurrency.USD,
+                        existing.getSellerProfile().getBakongAccountId(),
+                        collectingName(existing.getSellerProfile()),
+                        existing.getSellerProfile().getCity())
+                : null;
+        return respond(existing, request, payment);
     }
 
     /**
@@ -177,7 +236,7 @@ public class PosServiceImpl implements PosService {
      * refused rather than corrected, because either means the till is confused about
      * what just happened at the counter.
      */
-    private PosSaleResponse respond(Purchase sale, PosSaleRequest request) {
+    private PosSaleResponse respond(Purchase sale, PosSaleRequest request, Payment payment) {
         PaymentMethod method = paymentMethodOf(request);
         BigDecimal tendered = Money.of(request.amountTendered());
 
@@ -198,7 +257,8 @@ public class PosServiceImpl implements PosService {
         // The stored method wins on a replay: what the sale was actually paid with was
         // settled the first time, and a retry that disagrees does not get to rewrite it.
         PaymentMethod recorded = sale.getPaymentMethod() == null ? method : sale.getPaymentMethod();
-        return new PosSaleResponse(purchaseMapper.toResponse(sale), recorded, tendered, change);
+        return new PosSaleResponse(purchaseMapper.toResponse(sale), recorded, tendered, change,
+                payment == null ? null : PaymentResponse.of(payment));
     }
 
     private static String trimToNull(String value) {

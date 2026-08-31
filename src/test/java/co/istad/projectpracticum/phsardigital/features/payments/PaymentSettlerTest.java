@@ -153,6 +153,7 @@ class PaymentSettlerTest {
         payment.setAmount(amount);
         payment.setCurrency(PaymentCurrency.USD);
         payment.setStatus(PaymentStatus.PENDING);
+        payment.setCollectingAccountId(MERCHANT_ACCOUNT);
         payment.setQr("00020101021229...6304ABCD");
         payment.setMd5("0123456789abcdef0123456789abcdef");
         payment.setExpiresAt(LocalDateTime.now().plusMinutes(10));

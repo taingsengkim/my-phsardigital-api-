@@ -71,6 +71,23 @@ public record SellerProfileUpdateRequest(
         String biography,
 
         @Size(max = 10, message = "A shop may list at most 10 social links")
-        List<@Size(max = 500, message = "Each social link must not exceed 500 characters") String> socialLink
+        List<@Size(max = 500, message = "Each social link must not exceed 500 characters") String> socialLink,
+
+        /**
+         * The shop's own Bakong account, which a counter QR is drawn on. Until it is set,
+         * taking KHQR at the till is refused rather than collected somewhere else.
+         *
+         * <p>The pattern admits the empty string as well as {@code name@bank}, so a shop
+         * can withdraw the account it gave; anything else with a stray or missing
+         * {@code @} is refused here rather than by the SDK at the counter.
+         */
+        @Size(max = 32, message = "Bakong account must not exceed 32 characters")
+        @Pattern(regexp = "^$|^[^@]+@[^@]+$",
+                message = "Bakong account must look like 'name@bank'")
+        String bakongAccountId,
+
+        /** What the payer reads when they scan. KHQR allows only 25 characters. */
+        @Size(max = 25, message = "Bakong display name must not exceed 25 characters")
+        String bakongAccountName
 ) {
 }

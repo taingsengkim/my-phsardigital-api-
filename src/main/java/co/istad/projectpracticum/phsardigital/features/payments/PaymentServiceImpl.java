@@ -28,28 +28,70 @@ public class PaymentServiceImpl implements PaymentService {
     private final PaymentSettler paymentSettler;
     private final KhqrGenerator khqrGenerator;
     private final BakongClient bakongClient;
+    private final co.istad.projectpracticum.phsardigital.features.payments.khqr.BakongProps props;
+
+    @Override
+    @Transactional
+    public Payment startForAccount(PaymentPurpose purpose, String reference, String payerId,
+                                   BigDecimal amount, PaymentCurrency currency,
+                                   String accountId, String accountName, String city) {
+        Payment payment = open(purpose, reference, payerId, amount, currency, accountId);
+        if (payment.getMd5() != null) {
+            return payment;
+        }
+        KhqrPayload payload = khqrGenerator.generateForAccount(
+                payment.getUuid(), accountId, accountName, city, payment.getAmount(), currency);
+        return persist(payment, payload, purpose, reference, payerId);
+    }
 
     @Override
     @Transactional
     public Payment start(PaymentPurpose purpose, String reference, String payerId,
                          BigDecimal amount, PaymentCurrency currency) {
+        Payment payment = open(purpose, reference, payerId, amount, currency, props.getAccountId());
+        if (payment.getMd5() != null) {
+            return payment;
+        }
+        // Generated against the payment's own UUID, which is what makes the resulting
+        // MD5 unique even for two identical purchases; see KhqrGenerator#billNumberFor.
+        KhqrPayload payload = khqrGenerator.generate(
+                payment.getUuid(), payment.getAmount(), currency);
+        return persist(payment, payload, purpose, reference, payerId);
+    }
+
+    /**
+     * Finds the caller's live payment for this exact thing, or prepares a fresh one.
+     *
+     * <p>A returned payment that already carries an MD5 is the existing one and needs no
+     * QR minting; one without has never been saved. Splitting it this way keeps the
+     * reuse rule in a single place while letting each caller mint on the account it
+     * collects into.
+     */
+    private Payment open(PaymentPurpose purpose, String reference, String payerId,
+                         BigDecimal amount, PaymentCurrency currency, String collectingAccountId) {
         if (!paymentSettler.handles(purpose)) {
             // Taking money for something nothing can grant is the one failure mode here
             // that cannot be undone by retrying, so it is checked before a QR exists.
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
                     "Nothing is configured to fulfil a " + purpose + " payment.");
         }
+        if (collectingAccountId == null || collectingAccountId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "No Bakong account is configured to collect this payment.");
+        }
 
-        Payment open = paymentRepository
+        Payment existing = paymentRepository
                 .findFirstByPayerIdAndPurposeAndReferenceAndStatusOrderByCreatedAtDesc(
                         payerId, purpose, reference, PaymentStatus.PENDING)
                 .orElse(null);
         // Only a QR that is still scannable is worth handing back. One that lapsed
         // between the two presses is not reusable: its expiry is baked into the payload,
         // so no amount of goodwill here would make a banking app accept it.
-        if (open != null && open.isPayable() && open.getAmount().compareTo(amount) == 0
-                && open.getCurrency() == currency) {
-            return open;
+        if (existing != null && existing.isPayable()
+                && existing.getAmount().compareTo(amount) == 0
+                && existing.getCurrency() == currency
+                && collectingAccountId.equalsIgnoreCase(existing.getCollectingAccountId())) {
+            return existing;
         }
 
         Payment payment = new Payment();
@@ -59,18 +101,21 @@ public class PaymentServiceImpl implements PaymentService {
         payment.setPayerId(payerId);
         payment.setAmount(Money.of(amount));
         payment.setCurrency(currency);
+        payment.setCollectingAccountId(collectingAccountId);
         payment.setStatus(PaymentStatus.PENDING);
+        return payment;
+    }
 
-        // Generated against the payment's own UUID, which is what makes the resulting
-        // MD5 unique even for two identical purchases; see KhqrGenerator#billNumberFor.
-        KhqrPayload payload = khqrGenerator.generate(payment.getUuid(), payment.getAmount(), currency);
+    private Payment persist(Payment payment, KhqrPayload payload, PaymentPurpose purpose,
+                            String reference, String payerId) {
         payment.setQr(payload.qr());
         payment.setMd5(payload.md5());
         payment.setExpiresAt(payload.expiresAt());
 
         Payment saved = paymentRepository.save(payment);
-        log.info("Payment {} opened: {} {} from {} for {} ({})", saved.getUuid(),
-                saved.getAmount(), saved.getCurrency(), payerId, purpose, reference);
+        log.info("Payment {} opened: {} {} from {} for {} ({}) into {}", saved.getUuid(),
+                saved.getAmount(), saved.getCurrency(), payerId, purpose, reference,
+                saved.getCollectingAccountId());
         return saved;
     }
 
