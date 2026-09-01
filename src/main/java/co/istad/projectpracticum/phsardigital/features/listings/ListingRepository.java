@@ -64,7 +64,23 @@ public interface ListingRepository extends JpaRepository<Listing, UUID>, JpaSpec
     Page<Listing> findByStatusAndSellerProfile_IsActiveTrueAndCategory_IsActiveTrueAndCategory_IsDeletedFalse(
             ListingStatus status, Pageable pageable);
 
-    boolean existsBySlug(String slug);
+    /**
+     * Every slug that could stand in the way of one derived from {@code base} — the base
+     * itself, and anything already carrying a suffix after it. Read in one query so a
+     * title several sellers share does not cost a round trip per candidate.
+     *
+     * <p>{@code base} comes from {@link co.istad.projectpracticum.phsardigital.config.config.Utils#toSlug},
+     * which leaves only {@code [a-z0-9-]}, so it cannot smuggle a {@code LIKE} wildcard
+     * into the pattern.
+     *
+     * @param excludeUuid the listing being renamed, so it is not made to dodge its own
+     *                    slug; {@code null} when creating
+     */
+    @Query("SELECT l.slug FROM Listing l "
+            + "WHERE (l.slug = :base OR l.slug LIKE CONCAT(:base, '-%')) "
+            + "AND (:excludeUuid IS NULL OR l.uuid <> :excludeUuid)")
+    List<String> findSlugsFrom(@Param("base") String base,
+                               @Param("excludeUuid") UUID excludeUuid);
 
 
     Page<Listing> findBySellerProfileAndStatus(SellerProfile seller, ListingStatus status, Pageable pageable);

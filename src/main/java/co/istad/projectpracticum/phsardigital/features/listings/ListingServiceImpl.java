@@ -140,6 +140,38 @@ public class ListingServiceImpl implements ListingService{
         return trimmed;
     }
 
+    /**
+     * A slug derived from {@code title} that nothing else holds — the plain one where it
+     * is free, and {@code -2}, {@code -3}, … where it is not.
+     *
+     * <p>Two shops both listing "iPhone 15 Pro" is ordinary rather than a mistake, and
+     * the second seller has nothing to correct: the slug is ours to derive, not something
+     * they typed. So the collision is settled here instead of being reported back as a
+     * conflict the seller could only work around by renaming their product.
+     *
+     * <p>The unique constraint on the column stays the real guard. This narrows the race
+     * rather than closing it — two creates of the same title landing together can read
+     * the same free suffix, and the loser fails on the constraint instead of writing a
+     * duplicate.
+     *
+     * @param excludeUuid the listing being renamed, so it does not have to dodge itself;
+     *                    {@code null} when creating
+     */
+    String uniqueSlug(String title, UUID excludeUuid) {
+        String base = Utils.toSlug(title);
+        Set<String> taken = new HashSet<>(listingRepository.findSlugsFrom(base, excludeUuid));
+        if (!taken.contains(base)) {
+            return base;
+        }
+        // Terminates: only finitely many slugs are taken, so some suffix is free.
+        int suffix = 2;
+        String candidate = base + "-" + suffix;
+        while (taken.contains(candidate)) {
+            candidate = base + "-" + (++suffix);
+        }
+        return candidate;
+    }
+
     private ListingStatus parseStatus(String status) {
         try {
             return ListingStatus.valueOf(status.toUpperCase());
@@ -288,10 +320,7 @@ public class ListingServiceImpl implements ListingService{
     public ListingResponse create(ListingCreateRequest request) {
         Category category = publicCategoryOr404(request.categoryUuid());
 
-        String slug = Utils.toSlug(request.title());
-        if (listingRepository.existsBySlug(slug)) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Listing slug already exists.");
-        }
+        String slug = uniqueSlug(request.title(), null);
 
         String sellerId = AuthUtils.extractUserId();
         // Holding the SELLER role is not enough on its own: the role survives a
@@ -353,12 +382,11 @@ public class ListingServiceImpl implements ListingService{
             categoryChanged = !category.getUuid().equals(listing.getCategory().getUuid());
             listing.setCategory(category);
         }
-        if (request.title() != null) {
-            String newSlug = Utils.toSlug(request.title());
-            if (!newSlug.equals(listing.getSlug()) && listingRepository.existsBySlug(newSlug)) {
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "Listing slug already exists.");
-            }
-            listing.setSlug(newSlug);
+        // Only a real rename earns a new slug. Re-saving the same title keeps the slug the
+        // listing's existing links point at, suffix and all, rather than letting it drift
+        // back onto a base that has since been freed up.
+        if (request.title() != null && !request.title().equals(listing.getTitle())) {
+            listing.setSlug(uniqueSlug(request.title(), listing.getUuid()));
             listing.setTitle(request.title());
         }
         if (request.description() != null) {
