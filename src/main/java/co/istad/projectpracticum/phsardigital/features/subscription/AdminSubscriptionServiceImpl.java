@@ -1,10 +1,14 @@
 package co.istad.projectpracticum.phsardigital.features.subscription;
 
 import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
+import co.istad.projectpracticum.phsardigital.features.file.FileUploadService;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingRepository;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingStatus;
+import co.istad.projectpracticum.phsardigital.features.seller.SellerProfile;
+import co.istad.projectpracticum.phsardigital.features.seller.SellerRepository;
 import co.istad.projectpracticum.phsardigital.features.subscription.dto.GrantSubscriptionRequest;
 import co.istad.projectpracticum.phsardigital.features.subscription.dto.SellerSubscriptionResponse;
+import co.istad.projectpracticum.phsardigital.features.subscription.dto.SubscriberResponse;
 import co.istad.projectpracticum.phsardigital.features.subscription.dto.SubscriptionPlanRequest;
 import co.istad.projectpracticum.phsardigital.features.subscription.dto.SubscriptionPlanResponse;
 import co.istad.projectpracticum.phsardigital.features.subscription.dto.SubscriptionPlanUpdateRequest;
@@ -39,6 +43,8 @@ public class AdminSubscriptionServiceImpl implements AdminSubscriptionService {
     private final SubscriptionPlanRepository planRepository;
     private final SellerSubscriptionRepository subscriptionRepository;
     private final ListingRepository listingRepository;
+    private final SellerRepository sellerRepository;
+    private final FileUploadService fileUploadService;
 
     // ---- the catalogue -------------------------------------------------
 
@@ -153,7 +159,7 @@ public class AdminSubscriptionServiceImpl implements AdminSubscriptionService {
             page = subscriptionRepository.findAll(pageable);
         }
         if (page.isEmpty()) {
-            return page.map(subscription -> toResponse(subscription, null));
+            return page.map(subscription -> toResponse(subscription, null, null));
         }
 
         // One catalogue read for the page rather than one per row.
@@ -162,7 +168,16 @@ public class AdminSubscriptionServiceImpl implements AdminSubscriptionService {
                         page.getContent().stream().map(SellerSubscription::getPlanCode).toList())
                 .forEach(plan -> plans.put(plan.getCode(), plan));
 
-        return page.map(subscription -> toResponse(subscription, plans.get(subscription.getPlanCode())));
+        // The shops, on the same terms. A subscription row names its seller by Keycloak
+        // subject and nothing else, so without this the screen is a page of UUIDs.
+        Map<String, SellerProfile> sellers = new HashMap<>();
+        sellerRepository.findAllById(
+                        page.getContent().stream().map(SellerSubscription::getSellerId).toList())
+                .forEach(seller -> sellers.put(seller.getSellerId(), seller));
+
+        return page.map(subscription -> toResponse(subscription,
+                plans.get(subscription.getPlanCode()),
+                sellers.get(subscription.getSellerId())));
     }
 
     @Override
@@ -192,7 +207,8 @@ public class AdminSubscriptionServiceImpl implements AdminSubscriptionService {
 
         log.info("Seller {} granted {} for {} days by {}",
                 sellerId, plan.getCode(), days, AuthUtils.extractUserId());
-        return toResponse(subscriptionRepository.save(subscription), plan);
+        return toResponse(subscriptionRepository.save(subscription), plan,
+                sellerRepository.findById(sellerId).orElse(null));
     }
 
     @Override
@@ -213,7 +229,8 @@ public class AdminSubscriptionServiceImpl implements AdminSubscriptionService {
 
         log.info("Subscription for seller {} cancelled by {}",
                 sellerId, AuthUtils.extractUserId());
-        return toResponse(subscription, null);
+        return toResponse(subscription, null,
+                sellerRepository.findById(sellerId).orElse(null));
     }
 
     private SubscriptionPlan requirePlan(String code) {
@@ -223,17 +240,22 @@ public class AdminSubscriptionServiceImpl implements AdminSubscriptionService {
     }
 
     /**
-     * @param plan the subscription's plan, or null when it was not loaded — a
-     *             cancelled row's plan details are not what the caller is asking about
+     * @param plan   the subscription's plan, or null when it was not loaded — a
+     *               cancelled row's plan details are not what the caller is asking about
+     * @param seller the shop that holds it, or null when the id has no profile behind
+     *               it. A grant takes whatever seller id it is given, so that is
+     *               possible, and it must not fail the whole page over one bad row
      */
     private SellerSubscriptionResponse toResponse(SellerSubscription subscription,
-                                                  SubscriptionPlan plan) {
+                                                  SubscriptionPlan plan,
+                                                  SellerProfile seller) {
         long used = listingRepository.countBySellerProfile_SellerIdAndStatusNotIn(
                 subscription.getSellerId(), UNCOUNTED_STATUSES);
         boolean active = subscription.isCurrentlyActive();
 
         return new SellerSubscriptionResponse(
                 subscription.getSellerId(),
+                toSubscriber(seller),
                 subscription.getPlanCode(),
                 plan == null ? subscription.getPlanCode() : plan.getDisplayName(),
                 subscription.getStatus(),
@@ -243,5 +265,24 @@ public class AdminSubscriptionServiceImpl implements AdminSubscriptionService {
                 plan == null ? null : plan.listingLimitOrNull(),
                 active && plan != null && plan.allowsAnotherListing(used),
                 active);
+    }
+
+    /**
+     * The logo is answered as a URL rather than an object name, and only
+     * {@link FileUploadService} knows which scheme it needs — the same reason
+     * {@code SellerProfileMapper} writes its shop blocks out by hand. For a public file
+     * that is string concatenation, so it costs nothing per row.
+     */
+    private SubscriberResponse toSubscriber(SellerProfile seller) {
+        if (seller == null) {
+            return null;
+        }
+        return new SubscriberResponse(
+                seller.getSellerId(),
+                seller.getBusinessName(),
+                fileUploadService.getPreviewUrl(seller.getLogoFile()),
+                seller.getPhoneNumber(),
+                seller.getCity(),
+                seller.getIsActive());
     }
 }

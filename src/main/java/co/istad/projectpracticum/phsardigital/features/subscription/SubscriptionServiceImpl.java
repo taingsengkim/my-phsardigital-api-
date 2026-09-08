@@ -194,6 +194,9 @@ public class SubscriptionServiceImpl implements SubscriptionService {
 
         return new SellerSubscriptionResponse(
                 subscription.getSellerId(),
+                // The caller is the shop. Naming it back to itself would cost a query
+                // per call to repeat what /sellers/me already answered.
+                null,
                 plan.getCode(),
                 plan.getDisplayName(),
                 subscription.getStatus(),

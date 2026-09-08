@@ -1,7 +1,10 @@
 package co.istad.projectpracticum.phsardigital.features.subscription;
 
 import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
+import co.istad.projectpracticum.phsardigital.features.file.FileUploadService;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingRepository;
+import co.istad.projectpracticum.phsardigital.features.seller.SellerProfile;
+import co.istad.projectpracticum.phsardigital.features.seller.SellerRepository;
 import co.istad.projectpracticum.phsardigital.features.subscription.dto.GrantSubscriptionRequest;
 import co.istad.projectpracticum.phsardigital.features.subscription.dto.SubscriptionPlanRequest;
 import co.istad.projectpracticum.phsardigital.features.subscription.dto.SubscriptionPlanUpdateRequest;
@@ -13,11 +16,14 @@ import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -41,6 +47,10 @@ class AdminSubscriptionServiceImplTest {
     private SellerSubscriptionRepository subscriptionRepository;
     @Mock
     private ListingRepository listingRepository;
+    @Mock
+    private SellerRepository sellerRepository;
+    @Mock
+    private FileUploadService fileUploadService;
     @InjectMocks
     private AdminSubscriptionServiceImpl service;
 
@@ -230,6 +240,41 @@ class AdminSubscriptionServiceImplTest {
                         .isEqualTo(HttpStatus.CONFLICT));
     }
 
+    /** A page of bare Keycloak subjects is not a screen anybody can act on. */
+    @Test
+    void listNamesTheShopBehindEachSubscription() {
+        when(subscriptionRepository.findAll(any(Pageable.class))).thenReturn(new PageImpl<>(
+                List.of(subscription("BASIC", LocalDateTime.now().plusDays(5)))));
+        when(planRepository.findAllById(any()))
+                .thenReturn(List.of(plan("BASIC", "Basic", "5.00", 30, 20)));
+        when(sellerRepository.findAllById(any())).thenReturn(List.of(shop("Ratanak Store")));
+
+        var row = service.list(null, null, 0, 20).getContent().getFirst();
+
+        assertThat(row.seller()).isNotNull();
+        assertThat(row.seller().businessName()).isEqualTo("Ratanak Store");
+        assertThat(row.seller().sellerId()).isEqualTo(SELLER_ID);
+        assertThat(row.seller().isActive()).isTrue();
+    }
+
+    /**
+     * A grant takes whatever seller id it is given, so a subscription with no shop
+     * behind it is reachable. One such row must not take the page down with it.
+     */
+    @Test
+    void listSurvivesASubscriptionWhoseShopIsMissing() {
+        when(subscriptionRepository.findAll(any(Pageable.class))).thenReturn(new PageImpl<>(
+                List.of(subscription("BASIC", LocalDateTime.now().plusDays(5)))));
+        when(planRepository.findAllById(any()))
+                .thenReturn(List.of(plan("BASIC", "Basic", "5.00", 30, 20)));
+        when(sellerRepository.findAllById(any())).thenReturn(List.of());
+
+        var row = service.list(null, null, 0, 20).getContent().getFirst();
+
+        assertThat(row.seller()).isNull();
+        assertThat(row.planDisplayName()).isEqualTo("Basic");
+    }
+
     private static MockedStatic<AuthUtils> authenticatedAdmin() {
         MockedStatic<AuthUtils> auth = mockStatic(AuthUtils.class);
         auth.when(AuthUtils::extractUserId).thenReturn(ADMIN_ID);
@@ -245,6 +290,13 @@ class AdminSubscriptionServiceImplTest {
         plan.setListingLimit(listingLimit);
         plan.setActive(true);
         return plan;
+    }
+
+    private static SellerProfile shop(String businessName) {
+        SellerProfile shop = new SellerProfile(SELLER_ID);
+        shop.setBusinessName(businessName);
+        shop.setIsActive(true);
+        return shop;
     }
 
     private static SellerSubscription subscription(String planCode, LocalDateTime expiresAt) {
