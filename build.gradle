@@ -42,7 +42,7 @@ dependencies {
     implementation 'org.mapstruct:mapstruct:1.6.3'
     annotationProcessor 'org.mapstruct:mapstruct-processor:1.6.3'
 
-    implementation 'io.minio:minio:8.5.10'
+    implementation 'io.minio:minio:9.0.3'
 
     // The KHQR payload is an EMVCo TLV string whose tag layout, field lengths and
     // CRC the National Bank of Cambodia specifies; a QR that gets any of it wrong
