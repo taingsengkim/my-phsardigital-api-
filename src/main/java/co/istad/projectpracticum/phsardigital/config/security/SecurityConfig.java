@@ -134,6 +134,12 @@ public class SecurityConfig {
                         .requestMatchers("/api/v1/purchases/seller/**").hasAnyRole("SELLER", "ADMIN")
                         .requestMatchers("/api/v1/purchases/**").hasAnyRole("USER", "SELLER", "ADMIN")
                         .requestMatchers("/api/v1/conversations/**").authenticated()
+                        // Anyone signed in may report, buyer or seller alike: a shop
+                        // that finds its own photographs on a rival's listing is the
+                        // one best placed to say so. Reading back is scoped to the
+                        // caller's own reports by ReportServiceImpl; the queue itself
+                        // is under /admin, which the catch-all above closes to admins.
+                        .requestMatchers("/api/v1/reports/**").authenticated()
                         .requestMatchers("/v3/api-docs/**","/swagger-ui/**","/swagger-ui.html").permitAll()
                         .requestMatchers("/ws/**").permitAll()
                         .requestMatchers("/scalar/**").permitAll()
