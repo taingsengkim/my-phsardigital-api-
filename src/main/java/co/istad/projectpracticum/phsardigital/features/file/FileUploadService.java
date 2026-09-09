@@ -55,6 +55,23 @@ public interface FileUploadService {
     FileUpload uploadDocument(MultipartFile file, String folder);
 
     /**
+     * Uploads a voice recording into the <em>private</em> bucket.
+     *
+     * <p>Private, unlike an image, because of who it belongs to rather than what it is: a
+     * voice note is one half of a conversation between two people. In the public bucket
+     * it would be anonymously readable to anyone holding — or guessing — the object name,
+     * which is not a property a private message may have. The only way back to it
+     * afterwards is a short-lived presigned URL.
+     *
+     * @param file   the multipart recording to upload
+     * @param folder logical prefix inside the private bucket, e.g. {@code "voice"}
+     * @return the persisted {@link FileUpload}
+     * @throws org.springframework.web.server.ResponseStatusException 413 when it is too
+     *         large, 415 when the bytes are not an allowed audio format
+     */
+    FileUpload uploadAudio(MultipartFile file, String folder);
+
+    /**
      * Resolves the browser-facing URL for a public object name.
      *
      * <p>Only valid for objects in the public bucket. Prefer

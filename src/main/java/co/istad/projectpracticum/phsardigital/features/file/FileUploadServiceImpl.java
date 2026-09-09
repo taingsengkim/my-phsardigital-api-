@@ -128,6 +128,17 @@ public class FileUploadServiceImpl implements FileUploadService {
     }
 
     @Override
+    public FileUpload uploadAudio(MultipartFile file, String folder) {
+        String contentType = validate(
+                file, minioProps.getMaxAudioSize().toBytes(),
+                minioProps.getMaxAudioSize().toMegabytes(),
+                minioProps.getAllowedAudioTypes(), "voice message");
+
+        return store(file, folder, contentType,
+                minioProps.getPrivateBucket(), FileVisibility.PRIVATE);
+    }
+
+    @Override
     public List<FileUploadResponse> uploadMultiple(List<MultipartFile> files) {
         if (files == null || files.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No files were sent.");

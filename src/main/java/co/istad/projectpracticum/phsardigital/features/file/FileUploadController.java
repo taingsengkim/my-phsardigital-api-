@@ -16,6 +16,9 @@ public class FileUploadController {
     /** Keeps identity documents under one prefix inside the private bucket. */
     private static final String DOCUMENT_FOLDER = "documents";
 
+    /** Voice notes share the private bucket with documents, under their own prefix. */
+    private static final String VOICE_FOLDER = "voice";
+
     private final FileUploadService fileUploadService;
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -51,6 +54,24 @@ public class FileUploadController {
      * avatars/<uuid>-photo.png} addressable at all. A single {@code {objectName}}
      * segment silently failed to match every foldered file.
      */
+    /**
+     * Uploads a voice recording, ready to attach to a chat message.
+     *
+     * <p>Two steps rather than one multipart send-message call, matching how every other
+     * attachment in this API works: upload, then name the returned {@code objectName} on
+     * the message. It also means a recording that fails to upload never produces a
+     * half-sent message, and the client can show the upload progressing before the bubble
+     * appears.
+     *
+     * <p>The returned URL is presigned and expires. It is there so the sender can play
+     * back what they recorded; the recipient gets a fresh one with the message.
+     */
+    @PostMapping(value = "/voice", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public FileUploadResponse uploadVoice(@RequestParam("file") MultipartFile file) {
+        FileUpload stored = fileUploadService.uploadAudio(file, VOICE_FOLDER);
+        return new FileUploadResponse(stored.getObjectName(), fileUploadService.getPreviewUrl(stored));
+    }
+
     @GetMapping("/preview/{*objectName}")
     public FileUploadResponse preview(@PathVariable String objectName) {
         return fileUploadService.getByName(trimLeadingSlash(objectName));

@@ -1,6 +1,7 @@
 package co.istad.projectpracticum.phsardigital.features.messaging;
 
 import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
+import co.istad.projectpracticum.phsardigital.features.file.FileUpload;
 import co.istad.projectpracticum.phsardigital.features.file.FileUploadService;
 import co.istad.projectpracticum.phsardigital.features.listings.Listing;
 import co.istad.projectpracticum.phsardigital.features.listings.ListingRepository;
@@ -88,9 +89,13 @@ public class MessagingServiceImpl implements MessagingService {
         Message message = new Message();
         message.setConversation(conversation);
         message.setSenderId(me);
-        message.setBody(request.body());
+        // Blank text alongside a recording is stored as null rather than "", so a caption
+        // that is only whitespace does not render as an empty line under the player.
+        message.setBody(request.body() == null || request.body().isBlank() ? null : request.body());
         message.setIsRead(false);
         message.setListing(resolveListing(request.listingUuid(), conversation));
+        message.setVoiceFile(resolveVoiceFile(request.voiceObjectName(), me));
+        message.setVoiceDurationSeconds(request.voiceDurationSeconds());
 
         Message saved = messageRepository.save(message);
 
@@ -174,6 +179,37 @@ public class MessagingServiceImpl implements MessagingService {
         return listing;
     }
 
+    /**
+     * Resolves the recording a message names, and refuses one the sender does not own.
+     *
+     * <p>Two checks, guarding two different things. Ownership stops a sender naming
+     * somebody else's object: without it a chat window becomes a way to read arbitrary
+     * files out of the private bucket — the bucket holding identity documents and
+     * business licences — by naming one and letting the server sign a URL for it.
+     *
+     * <p>The content type then stops a sender attaching a file that is theirs but is not
+     * audio. They own their uploaded business licence, so ownership alone would let it be
+     * sent as a "voice note" and quietly handed to the other party as a presigned link.
+     * Checked against the stored type, which {@code FileTypeDetector} derived from the
+     * bytes rather than from anything the uploader claimed.
+     *
+     * @return the file, or null when the message carries no recording
+     */
+    private FileUpload resolveVoiceFile(String objectName, String senderId) {
+        if (objectName == null || objectName.isBlank()) {
+            return null;
+        }
+
+        FileUpload file = fileUploadService.requireOwnedFile(objectName, senderId);
+        String contentType = file.getContentType();
+        if (contentType == null || !contentType.startsWith("audio/")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "That file is not a voice recording. Upload it through "
+                            + "/api/v1/files/voice and send the object name it returns.");
+        }
+        return file;
+    }
+
     /** The product card for a message, or null when it names no product. */
     private ListingContextResponse toListingContext(Listing listing) {
         if (listing == null) {
@@ -219,7 +255,7 @@ public class MessagingServiceImpl implements MessagingService {
         // last message
         Page<Message> last = messageRepository
                 .findByConversation_UuidOrderBySentAtDesc(c.getUuid(), PageRequest.of(0, 1));
-        String lastBody = last.hasContent() ? last.getContent().getFirst().getBody() : null;
+        String lastBody = last.hasContent() ? previewOf(last.getContent().getFirst()) : null;
         var lastAt = last.hasContent() ? last.getContent().getFirst().getSentAt() : null;
 
         long unread = messageRepository.countUnread(c.getUuid(), me);
@@ -244,6 +280,25 @@ public class MessagingServiceImpl implements MessagingService {
         );
     }
 
+    /**
+     * The one line of the newest message shown in the inbox.
+     *
+     * <p>A voice note has no text to show, and leaving it null would make the thread read
+     * as empty in the list — the conversation would look like nothing had happened in it.
+     * A caption is preferred when there is one, since it is what the sender actually
+     * wrote; otherwise the placeholder says a recording arrived.
+     *
+     * <p>Deliberately not a presigned URL: the inbox lists many conversations, and
+     * signing a link for each would hand out playable links to threads the reader has not
+     * opened, most of which would expire before anybody used them.
+     */
+    private String previewOf(Message message) {
+        if (message.getBody() != null && !message.getBody().isBlank()) {
+            return message.getBody();
+        }
+        return message.getVoiceFile() != null ? "🎤 Voice message" : null;
+    }
+
     private String avatarUrl(UserProfile profile) {
         if (profile == null || profile.getAvatarFile() == null) {
             return null;
@@ -253,12 +308,18 @@ public class MessagingServiceImpl implements MessagingService {
 
     private MessageResponse toMessageResponse(Message m) {
         UserProfile sender = userProfileRepository.findById(m.getSenderId()).orElse(null);
+        boolean isVoice = m.getVoiceFile() != null;
         return new MessageResponse(
                 m.getUuid(),
                 m.getConversation().getUuid(),
                 m.getSenderId(),
                 sender != null ? sender.getFullName() : null,
+                isVoice ? MessageType.VOICE : MessageType.TEXT,
                 m.getBody(),
+                // Signed here, at the moment of answering, so every read hands out a link
+                // with a full expiry window rather than one already halfway through it.
+                isVoice ? fileUploadService.getPreviewUrl(m.getVoiceFile()) : null,
+                m.getVoiceDurationSeconds(),
                 m.getIsRead(),
                 m.getSentAt(),
                 toListingContext(m.getListing())

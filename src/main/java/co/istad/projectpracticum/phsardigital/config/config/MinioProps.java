@@ -86,6 +86,23 @@ public class MinioProps {
     );
 
     /**
+     * A voice note is seconds of speech, not a music file. Ten megabytes is far more
+     * than Opus needs for the few minutes a chat message runs to, and small enough that
+     * a mistaken upload of somebody's album is refused rather than stored.
+     */
+    private DataSize maxAudioSize = DataSize.ofMegabytes(10);
+
+    /**
+     * What browsers record into: WebM in Chrome and Firefox, MP4 in Safari. Same rule as
+     * the lists above — every entry must be one
+     * {@link co.istad.projectpracticum.phsardigital.features.file.FileTypeDetector} can
+     * positively identify, or uploads of it are simply rejected.
+     */
+    private List<String> allowedAudioTypes = List.of(
+            "audio/webm", "audio/ogg", "audio/mp4", "audio/mpeg"
+    );
+
+    /**
      * How long a presigned download link for a private object stays valid. Long
      * enough for an admin to open the document, short enough that a leaked URL in
      * a referrer header or a chat log is worthless by the time anybody finds it.

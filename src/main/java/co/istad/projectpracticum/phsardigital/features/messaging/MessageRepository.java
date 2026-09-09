@@ -20,8 +20,11 @@ public interface MessageRepository extends JpaRepository<Message, UUID> {
      * otherwise. Both are to-one associations, so the join does not force Hibernate to
      * paginate in memory the way fetching a collection would.
      */
-    @EntityGraph(attributePaths = {"listing", "listing.thumbnailFile"})
+    @EntityGraph(attributePaths = {"listing", "listing.thumbnailFile", "voiceFile"})
     Page<Message> findByConversation_UuidOrderBySentAtDesc(UUID conversationUuid, Pageable pageable);
+
+    /** Whether any message still plays this recording — backs {@code MessagingFileReferences}. */
+    boolean existsByVoiceFile_ObjectName(String objectName);
 
     /**
      * The most recent message in a thread that names a product, for the inbox preview.

@@ -12,6 +12,10 @@ minio:
   public-read: ${MINIO_PUBLIC_READ:true}
   max-image-size: ${MINIO_MAX_IMAGE_SIZE:5MB}
   max-document-size: ${MINIO_MAX_DOCUMENT_SIZE:10MB}
+  # Voice notes in chat. They share the private bucket with documents, because a
+  # recording is one half of a private conversation and must never be anonymously
+  # readable the way a listing photo is.
+  max-audio-size: ${MINIO_MAX_AUDIO_SIZE:10MB}
   presigned-url-expiry: ${MINIO_PRESIGNED_URL_EXPIRY:15m}
   # Only formats FileTypeDetector can identify by their leading bytes are usable
   # here; anything else is rejected on upload regardless of what the client says.
@@ -20,6 +24,10 @@ minio:
   # accepted. The Office entries match any ZIP/OLE2 container — see FileTypeDetector
   # for why that is tolerable here and nowhere else.
   allowed-document-types: ${MINIO_ALLOWED_DOCUMENT_TYPES:application/pdf,image/jpeg,image/png,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword}
+  # What a browser's MediaRecorder produces: WebM/Opus in Chrome and Firefox, MP4/AAC in
+  # Safari. Same rule as the two lists above — an entry FileTypeDetector cannot identify
+  # by its bytes simply makes that format unusable, not unsafe.
+  allowed-audio-types: ${MINIO_ALLOWED_AUDIO_TYPES:audio/webm,audio/ogg,audio/mp4,audio/mpeg}
 
 # Bakong KHQR — how sellers pay for subscriptions.
 #

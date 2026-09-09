@@ -77,7 +77,7 @@ class MessagingListingContextTest {
 
         try (MockedStatic<AuthUtils> auth = authenticated(BUYER)) {
             var sent = service.sendMessage(CONVERSATION,
-                    new SendMessageRequest("Is this still available?", listing.getUuid()));
+                    new SendMessageRequest("Is this still available?", null, null, listing.getUuid()));
 
             assertThat(sent.listing()).isNotNull();
             assertThat(sent.listing().uuid()).isEqualTo(listing.getUuid());
@@ -94,7 +94,7 @@ class MessagingListingContextTest {
         when(messageRepository.save(any(Message.class))).thenAnswer(call -> call.getArgument(0));
 
         try (MockedStatic<AuthUtils> auth = authenticated(BUYER)) {
-            var sent = service.sendMessage(CONVERSATION, new SendMessageRequest("Thanks!", null));
+            var sent = service.sendMessage(CONVERSATION, new SendMessageRequest("Thanks!", null, null, null));
             assertThat(sent.listing()).isNull();
         }
 
@@ -113,7 +113,7 @@ class MessagingListingContextTest {
 
         try (MockedStatic<AuthUtils> auth = authenticated(BUYER)) {
             assertThatThrownBy(() -> service.sendMessage(CONVERSATION,
-                    new SendMessageRequest("look at this", someoneElses.getUuid())))
+                    new SendMessageRequest("look at this", null, null, someoneElses.getUuid())))
                     .isInstanceOf(ResponseStatusException.class)
                     .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                             .isEqualTo(HttpStatus.BAD_REQUEST));
@@ -130,7 +130,7 @@ class MessagingListingContextTest {
 
         try (MockedStatic<AuthUtils> auth = authenticated(BUYER)) {
             assertThatThrownBy(() -> service.sendMessage(CONVERSATION,
-                    new SendMessageRequest("hi", missing)))
+                    new SendMessageRequest("hi", null, null, missing)))
                     .isInstanceOf(ResponseStatusException.class)
                     .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                             .isEqualTo(HttpStatus.NOT_FOUND));
@@ -149,7 +149,7 @@ class MessagingListingContextTest {
 
         try (MockedStatic<AuthUtils> auth = authenticated(BUYER)) {
             var sent = service.sendMessage(CONVERSATION,
-                    new SendMessageRequest("Any restock?", soldOut.getUuid()));
+                    new SendMessageRequest("Any restock?", null, null, soldOut.getUuid()));
 
             // The card still renders, carrying the status so the client can mark it.
             assertThat(sent.listing().status()).isEqualTo(ListingStatus.SOLD_OUT);
