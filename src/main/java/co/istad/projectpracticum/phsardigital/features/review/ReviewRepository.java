@@ -117,4 +117,19 @@ public interface ReviewRepository extends JpaRepository<Review , UUID> {
     List<Object[]> ratingsForSellers(@Param("since") LocalDateTime since,
                                      @Param("sellerIds") Collection<String> sellerIds);
 
+    /**
+     * The same, over a shop's whole history rather than a period.
+     *
+     * <p>Separate from the overload above rather than called with a date far in the past:
+     * a list of shops near somebody is not a leaderboard, and a shop that has been well
+     * reviewed for years should not read as unrated because the window happened to be
+     * quiet.
+     *
+     * @return {@code [sellerId, averageRating, reviewCount]}; unreviewed shops absent
+     */
+    @Query("SELECT r.seller.sellerId, AVG(r.rating), COUNT(r) FROM Review r "
+            + "WHERE r.seller.sellerId IN :sellerIds "
+            + "GROUP BY r.seller.sellerId")
+    List<Object[]> ratingsForSellers(@Param("sellerIds") Collection<String> sellerIds);
+
 }

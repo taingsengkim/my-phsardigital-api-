@@ -94,6 +94,10 @@ public class SecurityConfig {
                         .hasAnyRole("SELLER","ADMIN")
                         .requestMatchers(HttpMethod.GET,"/api/v1/sellers/me").authenticated()
                         .requestMatchers(HttpMethod.GET,"/api/v1/sellers/top").permitAll()
+                        // Shops near a point the caller sends. Open like the board above:
+                        // the coordinates come from the device, so nothing here depends on
+                        // knowing who is asking, and a shopper looks before signing in.
+                        .requestMatchers(HttpMethod.GET,"/api/v1/sellers/nearby").permitAll()
                         .requestMatchers(HttpMethod.GET,"/api/v1/sellers/*","/api/v1/sellers/*/listings").permitAll()
                         // Ordered before the open /auth/** rule below: /auth/me answers
                         // for the current token, so it is the one auth endpoint that
