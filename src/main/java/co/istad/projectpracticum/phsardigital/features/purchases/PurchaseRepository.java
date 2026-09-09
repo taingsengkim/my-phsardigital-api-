@@ -291,6 +291,47 @@ public interface PurchaseRepository extends JpaRepository<Purchase, UUID>,
                                                              PurchaseStatus status);
 
     /**
+     * The most recent completed order in which this buyer bought this product.
+     *
+     * <p>Backs the "verified buyer" mark on a moderation report: a complaint from
+     * somebody who actually bought the thing carries different weight from one that did
+     * not, and the order id lets an admin open the transaction being described.
+     *
+     * @return matching order ids, newest first; empty when they never completed one
+     */
+    @Query("SELECT i.purchase.uuid FROM PurchaseItem i "
+            + "WHERE i.purchase.buyerId = :buyerId AND i.listing.uuid = :listingUuid "
+            + "AND i.purchase.status = :status "
+            + "ORDER BY i.purchase.createdAt DESC")
+    List<UUID> completedOrderIdsForBuyerAndListing(@Param("buyerId") String buyerId,
+                                                   @Param("listingUuid") UUID listingUuid,
+                                                   @Param("status") PurchaseStatus status,
+                                                   Pageable pageable);
+
+    /** As above, for a complaint about a whole shop rather than one of its products. */
+    @Query("SELECT p.uuid FROM Purchase p "
+            + "WHERE p.buyerId = :buyerId AND p.sellerProfile.sellerId = :sellerId "
+            + "AND p.status = :status "
+            + "ORDER BY p.createdAt DESC")
+    List<UUID> completedOrderIdsForBuyerAndSeller(@Param("buyerId") String buyerId,
+                                                  @Param("sellerId") String sellerId,
+                                                  @Param("status") PurchaseStatus status,
+                                                  Pageable pageable);
+
+    /**
+     * Which buyer-and-shop pairs have a completed order between them, for a whole page at
+     * once — the shop-level twin of {@link #completedPurchasePairs}.
+     *
+     * @return {@code [buyerId, sellerId]} pairs that genuinely exist
+     */
+    @Query("SELECT DISTINCT p.buyerId, p.sellerProfile.sellerId FROM Purchase p "
+            + "WHERE p.status = :status AND p.buyerId IN :buyerIds "
+            + "AND p.sellerProfile.sellerId IN :sellerIds")
+    List<Object[]> completedShopPairs(@Param("status") PurchaseStatus status,
+                                      @Param("buyerIds") Collection<String> buyerIds,
+                                      @Param("sellerIds") Collection<String> sellerIds);
+
+    /**
      * Which buyer-and-product pairs actually appear in a completed order — what earns a
      * review its "verified purchase" badge.
      *

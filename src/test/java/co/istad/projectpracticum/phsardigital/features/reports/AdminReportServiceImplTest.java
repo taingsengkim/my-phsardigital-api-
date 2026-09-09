@@ -1,7 +1,11 @@
 package co.istad.projectpracticum.phsardigital.features.reports;
 
 import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
+import co.istad.projectpracticum.phsardigital.features.file.FileUploadService;
+import co.istad.projectpracticum.phsardigital.features.purchases.PurchaseRepository;
 import co.istad.projectpracticum.phsardigital.features.reports.dto.ReportDecisionRequest;
+import co.istad.projectpracticum.phsardigital.features.user.UserProfileRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -14,6 +18,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -33,8 +38,33 @@ class AdminReportServiceImplTest {
 
     @Mock
     private ContentReportRepository reportRepository;
+    @Mock
+    private ReportTargetHydrator targetHydrator;
+    @Mock
+    private UserProfileRepository userProfileRepository;
+    @Mock
+    private PurchaseRepository purchaseRepository;
+    @Mock
+    private FileUploadService fileUploadService;
     @InjectMocks
     private AdminReportServiceImpl service;
+
+    /**
+     * These tests are about the decision, not about the investigation panel around it, so
+     * every enrichment resolves to nothing. A deleted target is a real case anyway — see
+     * {@link ReportTargetHydrator}.
+     */
+    @BeforeEach
+    void enrichmentReturnsNothing() {
+        when(targetHydrator.hydrate(any())).thenReturn(ReportTargetHydrator.Snapshot.empty());
+        when(targetHydrator.detailsOf(any(), any())).thenReturn(null);
+        when(userProfileRepository.findById(any())).thenReturn(Optional.empty());
+        when(reportRepository.countByStatusForTarget(any(), any(), any())).thenReturn(List.of());
+        when(purchaseRepository.completedOrderIdsForBuyerAndListing(any(), any(), any(), any()))
+                .thenReturn(List.of());
+        when(purchaseRepository.completedOrderIdsForBuyerAndSeller(any(), any(), any(), any()))
+                .thenReturn(List.of());
+    }
 
     @Test
     void resolvingRecordsWhoDecidedAndWhen() {

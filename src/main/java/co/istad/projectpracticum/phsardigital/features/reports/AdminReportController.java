@@ -1,7 +1,8 @@
 package co.istad.projectpracticum.phsardigital.features.reports;
 
+import co.istad.projectpracticum.phsardigital.features.reports.dto.AdminReportDetailResponse;
+import co.istad.projectpracticum.phsardigital.features.reports.dto.AdminReportRowResponse;
 import co.istad.projectpracticum.phsardigital.features.reports.dto.ReportDecisionRequest;
-import co.istad.projectpracticum.phsardigital.features.reports.dto.ReportResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -37,7 +38,7 @@ public class AdminReportController {
 
     /** Both filters are optional; the useful one is {@code status=OPEN}. */
     @GetMapping
-    public Page<ReportResponse> list(
+    public Page<AdminReportRowResponse> list(
             @RequestParam(required = false) ReportStatus status,
             @RequestParam(required = false) ReportTargetType targetType,
             @RequestParam(defaultValue = "0")
@@ -51,20 +52,20 @@ public class AdminReportController {
     }
 
     @GetMapping("/{uuid}")
-    public ReportResponse findOne(@PathVariable UUID uuid) {
+    public AdminReportDetailResponse findOne(@PathVariable UUID uuid) {
         return adminReportService.findOne(uuid);
     }
 
     /** Something was done about it. */
     @PatchMapping("/{uuid}/resolve")
-    public ReportResponse resolve(@PathVariable UUID uuid,
+    public AdminReportDetailResponse resolve(@PathVariable UUID uuid,
                                   @Valid @RequestBody(required = false) ReportDecisionRequest request) {
         return adminReportService.resolve(uuid, request);
     }
 
     /** Looked at, and there was nothing to answer. */
     @PatchMapping("/{uuid}/dismiss")
-    public ReportResponse dismiss(@PathVariable UUID uuid,
+    public AdminReportDetailResponse dismiss(@PathVariable UUID uuid,
                                   @Valid @RequestBody(required = false) ReportDecisionRequest request) {
         return adminReportService.dismiss(uuid, request);
     }

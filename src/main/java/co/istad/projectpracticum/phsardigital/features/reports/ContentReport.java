@@ -1,6 +1,7 @@
 package co.istad.projectpracticum.phsardigital.features.reports;
 
 import co.istad.projectpracticum.phsardigital.config.config.BasedEntity;
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -9,12 +10,16 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -97,4 +102,15 @@ public class ContentReport extends BasedEntity {
      */
     @Column(name = "decision_note", columnDefinition = "TEXT")
     private String decisionNote;
+
+    /**
+     * What the reporter attached to back the complaint up.
+     *
+     * <p>Cascaded and orphan-removed, so evidence belongs to its report and goes with it.
+     * The files themselves are not deleted here — {@code ReportFileReferences} refuses to
+     * delete an object a report still cites, since the photograph is the case.
+     */
+    @OneToMany(mappedBy = "report", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("sortOrder ASC")
+    private List<ReportEvidence> evidence = new ArrayList<>();
 }

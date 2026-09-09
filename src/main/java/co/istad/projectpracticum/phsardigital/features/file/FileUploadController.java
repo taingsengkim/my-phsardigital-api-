@@ -19,6 +19,9 @@ public class FileUploadController {
     /** Voice notes share the private bucket with documents, under their own prefix. */
     private static final String VOICE_FOLDER = "voice";
 
+    /** Evidence attached to a moderation report, private for the same reason. */
+    private static final String REPORT_EVIDENCE_FOLDER = "reports";
+
     private final FileUploadService fileUploadService;
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -69,6 +72,22 @@ public class FileUploadController {
     @PostMapping(value = "/voice", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public FileUploadResponse uploadVoice(@RequestParam("file") MultipartFile file) {
         FileUpload stored = fileUploadService.uploadAudio(file, VOICE_FOLDER);
+        return new FileUploadResponse(stored.getObjectName(), fileUploadService.getPreviewUrl(stored));
+    }
+
+    /**
+     * Uploads a photograph or screenshot to attach to a moderation report.
+     *
+     * <p>Goes to the private bucket, and so is answered as an expiring presigned URL. A
+     * complaint about a scam routinely carries somebody's doorstep, a delivery slip with
+     * an address on it, or a chat screenshot — evidence is about people, and putting it
+     * where listing photos live would make it anonymously readable.
+     *
+     * <p>Accepts the same formats as a supporting document: a photo or a PDF.
+     */
+    @PostMapping(value = "/report-evidence", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public FileUploadResponse uploadReportEvidence(@RequestParam("file") MultipartFile file) {
+        FileUpload stored = fileUploadService.uploadDocument(file, REPORT_EVIDENCE_FOLDER);
         return new FileUploadResponse(stored.getObjectName(), fileUploadService.getPreviewUrl(stored));
     }
 

@@ -49,7 +49,7 @@ class ReportServiceImplTest {
 
         try (MockedStatic<AuthUtils> auth = signedInAs(REPORTER_ID)) {
             var filed = service.file(new ReportRequest(ReportTargetType.LISTING, LISTING_ID,
-                    ReportReason.COUNTERFEIT, "  These are not real.  "));
+                    ReportReason.COUNTERFEIT, "  These are not real.  ", null));
 
             assertThat(filed.status()).isEqualTo(ReportStatus.OPEN);
             assertThat(filed.targetLabel()).isEqualTo("Fake AirPods");
@@ -68,7 +68,7 @@ class ReportServiceImplTest {
 
         try (MockedStatic<AuthUtils> auth = signedInAs(REPORTER_ID)) {
             var filed = service.file(new ReportRequest(ReportTargetType.SELLER, SHOP_ID,
-                    ReportReason.SCAM, null));
+                    ReportReason.SCAM, null, null));
 
             assertThat(filed.status()).isEqualTo(ReportStatus.OPEN);
             assertThat(filed.reviewedBy()).isNull();
@@ -80,7 +80,7 @@ class ReportServiceImplTest {
     void otherWithoutANoteIsRefused() {
         try (MockedStatic<AuthUtils> auth = signedInAs(REPORTER_ID)) {
             assertThatThrownBy(() -> service.file(new ReportRequest(
-                    ReportTargetType.LISTING, LISTING_ID, ReportReason.OTHER, "   ")))
+                    ReportTargetType.LISTING, LISTING_ID, ReportReason.OTHER, "   ", null)))
                     .isInstanceOf(ResponseStatusException.class)
                     .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
                             .isEqualTo(HttpStatus.BAD_REQUEST));
@@ -96,7 +96,7 @@ class ReportServiceImplTest {
 
         try (MockedStatic<AuthUtils> auth = signedInAs(SHOP_ID)) {
             assertThatThrownBy(() -> service.file(new ReportRequest(
-                    ReportTargetType.SELLER, SHOP_ID, ReportReason.SPAM, null)))
+                    ReportTargetType.SELLER, SHOP_ID, ReportReason.SPAM, null, null)))
                     .isInstanceOf(ResponseStatusException.class)
                     .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
                             .isEqualTo(HttpStatus.BAD_REQUEST));
@@ -114,7 +114,7 @@ class ReportServiceImplTest {
 
         try (MockedStatic<AuthUtils> auth = signedInAs(REPORTER_ID)) {
             assertThatThrownBy(() -> service.file(new ReportRequest(
-                    ReportTargetType.LISTING, LISTING_ID, ReportReason.COUNTERFEIT, null)))
+                    ReportTargetType.LISTING, LISTING_ID, ReportReason.COUNTERFEIT, null, null)))
                     .isInstanceOf(ResponseStatusException.class)
                     .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode())
                             .isEqualTo(HttpStatus.CONFLICT));

@@ -9,6 +9,8 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -38,4 +40,42 @@ public interface ContentReportRepository extends JpaRepository<ContentReport, UU
             String reporterId, ReportTargetType targetType, String targetId, ReportStatus status);
 
     Page<ContentReport> findByReporterIdOrderByCreatedAtDesc(String reporterId, Pageable pageable);
+
+    /** Backs {@code ReportFileReferences}. */
+    boolean existsByEvidence_File_ObjectName(String objectName);
+
+    /**
+     * How many complaints have been filed against one thing, and how many of those an
+     * admin agreed with — the two numbers that turn a single report into a pattern.
+     *
+     * <p>Counted per target rather than per report, and grouped by status in one query so
+     * a detail page costs one round trip instead of two counts. {@code RESOLVED} is the
+     * closest thing this system has to an upheld violation: it means an admin looked and
+     * did something, while {@code DISMISSED} means they looked and there was nothing to
+     * answer.
+     *
+     * @return {@code [status, count]} for each status this target has reports in; a
+     *         status with none is absent rather than a zero row
+     */
+    @Query("SELECT r.status, COUNT(r) FROM ContentReport r "
+            + "WHERE r.targetType = :targetType AND r.targetId = :targetId "
+            + "AND r.uuid <> :excluding "
+            + "GROUP BY r.status")
+    List<Object[]> countByStatusForTarget(@Param("targetType") ReportTargetType targetType,
+                                          @Param("targetId") String targetId,
+                                          @Param("excluding") UUID excluding);
+
+    /**
+     * The same counts for a page of targets at once, so the queue does not cost two
+     * aggregates per row.
+     *
+     * @return {@code [targetType, targetId, status, count]}
+     */
+    @Query("SELECT r.targetType, r.targetId, r.status, COUNT(r) FROM ContentReport r "
+            + "WHERE r.targetId IN :targetIds "
+            + "GROUP BY r.targetType, r.targetId, r.status")
+    List<Object[]> countByStatusForTargets(@Param("targetIds") Collection<String> targetIds);
+
+    /** How many complaints one person has ever filed — reporter credibility, on the detail page. */
+    long countByReporterId(String reporterId);
 }

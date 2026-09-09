@@ -1,6 +1,8 @@
 package co.istad.projectpracticum.phsardigital.features.reports;
 
 import co.istad.projectpracticum.phsardigital.config.security.AuthUtils;
+import co.istad.projectpracticum.phsardigital.features.file.FileUpload;
+import co.istad.projectpracticum.phsardigital.features.file.FileUploadService;
 import co.istad.projectpracticum.phsardigital.features.reports.dto.ReportRequest;
 import co.istad.projectpracticum.phsardigital.features.reports.dto.ReportResponse;
 import lombok.RequiredArgsConstructor;
@@ -12,6 +14,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -21,6 +26,7 @@ public class ReportServiceImpl implements ReportService {
 
     private final ContentReportRepository reportRepository;
     private final ReportTargetResolver targetResolver;
+    private final FileUploadService fileUploadService;
 
     /**
      * Files a complaint. Grants nothing and hides nothing on its own — a report is a
@@ -70,6 +76,8 @@ public class ReportServiceImpl implements ReportService {
         report.setNote(note);
         report.setStatus(ReportStatus.OPEN);
 
+        attachEvidence(report, request.evidenceObjectNames(), reporterId);
+
         ContentReport saved = reportRepository.save(report);
         log.info("Report {} filed by {} against {} {} for {}", saved.getUuid(), reporterId,
                 saved.getTargetType(), saved.getTargetId(), saved.getReason());
@@ -99,6 +107,47 @@ public class ReportServiceImpl implements ReportService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Report not found."));
         return ReportResponse.of(report);
+    }
+
+    /**
+     * Hangs the reporter's photographs off the report.
+     *
+     * <p>Ownership is checked in one batch rather than per file, and before the report is
+     * saved: naming a file somebody else uploaded fails the whole request instead of
+     * filing a complaint with half its evidence attached. Without the check, an object
+     * name is all anybody would need to have the server sign a URL for a stranger's
+     * identity document, which lives in the same bucket.
+     *
+     * <p>The order the reporter sent them in is kept, because evidence is often a
+     * sequence — the parcel, then the slip, then the message.
+     */
+    private void attachEvidence(ContentReport report, List<String> objectNames, String reporterId) {
+        if (objectNames == null || objectNames.isEmpty()) {
+            return;
+        }
+
+        List<String> wanted = objectNames.stream()
+                .filter(name -> name != null && !name.isBlank())
+                .map(String::trim)
+                .distinct()
+                .toList();
+        if (wanted.isEmpty()) {
+            return;
+        }
+
+        // Returned in no particular order, so they are indexed and re-read in the order
+        // the reporter actually sent.
+        Map<String, FileUpload> owned = new HashMap<>();
+        fileUploadService.requireOwnedFiles(wanted, reporterId)
+                .forEach(file -> owned.put(file.getObjectName(), file));
+
+        for (int index = 0; index < wanted.size(); index++) {
+            ReportEvidence attachment = new ReportEvidence();
+            attachment.setReport(report);
+            attachment.setFile(owned.get(wanted.get(index)));
+            attachment.setSortOrder(index);
+            report.getEvidence().add(attachment);
+        }
     }
 
     private static String trimToNull(String value) {
