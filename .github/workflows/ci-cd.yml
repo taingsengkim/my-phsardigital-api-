@@ -78,7 +78,23 @@ jobs:
         id: image
         shell: bash
         run: |
-          image_name="ghcr.io/${GITHUB_REPOSITORY,,}"
+          set -Eeuo pipefail
+          # A Docker path component may only hold lowercase alphanumerics separated by
+          # '.', '_' or '-', and must begin and end with an alphanumeric. An owner or
+          # repository name is under no such rule, so it is sanitised rather than
+          # lowercased alone: a fork called "my-phsardigital-api-" is a legal GitHub name
+          # and an illegal image reference, and buildx rejects the tag outright.
+          sanitise() {
+            printf '%s' "$1" | sed -E 's/[^a-z0-9._-]+/-/g; s/[._-]{2,}/-/g; s/^[._-]+//; s/[._-]+$//'
+          }
+          repository="${GITHUB_REPOSITORY,,}"
+          owner="$(sanitise "${repository%%/*}")"
+          name="$(sanitise "${repository#*/}")"
+          test -n "$owner" && test -n "$name" || {
+            echo "Cannot build an image name from repository '$GITHUB_REPOSITORY'"; exit 1; }
+
+          image_name="ghcr.io/$owner/$name"
+          echo "Publishing as $image_name"
           echo "name=$image_name" >> "$GITHUB_OUTPUT"
           echo "ref=$image_name:$GITHUB_SHA" >> "$GITHUB_OUTPUT"
 
