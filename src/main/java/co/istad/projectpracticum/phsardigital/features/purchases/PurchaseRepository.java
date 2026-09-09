@@ -3,7 +3,10 @@ package co.istad.projectpracticum.phsardigital.features.purchases;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -15,12 +18,43 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-public interface PurchaseRepository extends JpaRepository<Purchase, UUID> {
+/**
+ * {@link JpaSpecificationExecutor} backs the admin orders table, whose eight filters are
+ * all optional — a query method per combination is not a thing anyone can maintain.
+ */
+public interface PurchaseRepository extends JpaRepository<Purchase, UUID>,
+        JpaSpecificationExecutor<Purchase> {
 
     /** Serializes every state transition for one order before inventory is touched. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT p FROM Purchase p WHERE p.uuid = :uuid")
     Optional<Purchase> findByUuidForUpdate(@Param("uuid") UUID uuid);
+
+    /**
+     * The shop, and its logo, joined rather than fetched per row.
+     *
+     * <p>{@code sellerProfile} is a {@code ManyToOne} and so eager by default: without
+     * this graph a page of twenty-five orders from twenty-five different shops costs
+     * twenty-five extra selects, and as many again for the logos. Overriding the
+     * specification query is the only place to say so, since the admin table is the only
+     * caller that spans every shop.
+     */
+    @Override
+    @EntityGraph(attributePaths = {"sellerProfile", "sellerProfile.logoFile"})
+    Page<Purchase> findAll(Specification<Purchase> specification, Pageable pageable);
+
+    /**
+     * The lines of a page of orders, with the products they point at, in one query.
+     *
+     * <p>Fetched separately rather than joined onto the page above: a join fetch across a
+     * to-many collection cannot be paginated in the database, and Hibernate silently
+     * falls back to reading every matching row into memory and paging there.
+     */
+    @Query("SELECT i FROM PurchaseItem i "
+            + "JOIN FETCH i.listing l "
+            + "LEFT JOIN FETCH l.thumbnailFile "
+            + "WHERE i.purchase.uuid IN :purchaseUuids")
+    List<PurchaseItem> findItemsForPurchases(@Param("purchaseUuids") Collection<UUID> purchaseUuids);
 
     /** Backs the delivery-photo detach in {@code PurchaseFileListener}. */
     List<Purchase> findAllByDeliveryPhotos_File_ObjectName(String objectName);
@@ -54,6 +88,35 @@ public interface PurchaseRepository extends JpaRepository<Purchase, UUID> {
             GROUP BY status
             """, nativeQuery = true)
     List<Object[]> summariseOrdersForSeller(@Param("sellerId") String sellerId);
+
+    /**
+     * The whole marketplace's orders in a window, counted and valued by state — the admin
+     * dashboard's KPI row and every status tab badge in one round trip.
+     *
+     * <p>The marketplace-wide twin of {@link #summariseOrdersForSeller}, and native for
+     * the same reason: the money column is floating point, so each order is cast to cents
+     * before the sum rather than after, and a month of takings does not accumulate binary
+     * drift on its way to an administrator's screen.
+     *
+     * <p>Bounds are required rather than nullable. A null timestamp gives PostgreSQL
+     * nothing to infer the parameter's type from, and the caller has a concrete window in
+     * every case — the endpoint defaults it to month-to-date.
+     *
+     * @param from inclusive, {@code to} exclusive, matching the table's own filter
+     * @return {@code [status, orderCount, value]} per state that has orders in the
+     *         window; a state with none is absent rather than a zero row, so the caller
+     *         fills the gaps
+     */
+    @Query(value = """
+            SELECT status,
+                   COUNT(*),
+                   COALESCE(SUM(CAST(total_price AS numeric(19, 2))), CAST(0 AS numeric(19, 2)))
+            FROM purchases
+            WHERE created_at >= :from AND created_at < :to
+            GROUP BY status
+            """, nativeQuery = true)
+    List<Object[]> summariseOrdersPlacedBetween(@Param("from") LocalDateTime from,
+                                                @Param("to") LocalDateTime to);
 
     /** Orders placed by anyone at this shop since a moment — the "today" counter. */
     long countBySellerProfile_SellerIdAndCreatedAtGreaterThanEqual(String sellerId,
