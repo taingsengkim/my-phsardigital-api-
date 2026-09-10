@@ -51,10 +51,16 @@ public interface MessageRepository extends JpaRepository<Message, UUID> {
             "AND m.senderId <> :userId AND m.isRead = false")
     long countAllUnreadForUser(@Param("userId") String userId);
 
+    /**
+     * Marks a thread's incoming messages read.
+     *
+     * @return how many rows changed, so a caller can tell a real read from reopening a
+     *         thread that was already read and skip announcing the second
+     */
     @Modifying
     @Query("UPDATE Message m SET m.isRead = true " +
             "WHERE m.conversation.uuid = :conversationUuid " +
             "AND m.senderId <> :userId AND m.isRead = false")
-    void markAllRead(@Param("conversationUuid") UUID conversationUuid,
-                     @Param("userId") String userId);
+    int markAllRead(@Param("conversationUuid") UUID conversationUuid,
+                    @Param("userId") String userId);
 }

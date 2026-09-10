@@ -20,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -104,19 +105,24 @@ public class MessagingServiceImpl implements MessagingService {
         MessageResponse response = toMessageResponse(saved);
 
         // ---- REAL-TIME PUSH ----
-        String recipientId = conversation.getParticipantA().equals(me)
-                ? conversation.getParticipantB()
-                : conversation.getParticipantA();
+        // Both sides, not just the recipient. The HTTP response below only ever reaches
+        // the device that made the request, so a sender signed in on a phone and a
+        // laptop would see the two drift apart — the second device learns nothing about
+        // a message typed on the first until somebody refreshes it. Spring fans a user
+        // destination out to every session holding that principal, so this reaches all
+        // of both people's devices.
+        //
+        // The sending device therefore sees its own message twice, once as this frame
+        // and once as the response. Clients drop a frame whose MessageResponse#uuid they
+        // already hold, which they need anyway: a reconnect re-fetches the thread and
+        // would otherwise double up every message it had already drawn.
+        String recipientId = otherParticipant(conversation, me);
+        messagingTemplate.convertAndSendToUser(recipientId, "/queue/messages", response);
+        messagingTemplate.convertAndSendToUser(me, "/queue/messages", response);
+        log.debug("Message {} pushed to {} and {}", saved.getUuid(), recipientId, me);
 
-        log.info(">>> PUSHING to recipient: {}", recipientId);
-
-        messagingTemplate.convertAndSendToUser(
-                recipientId,
-                "/queue/messages",
-                response
-        );
-        // The same response the recipient was pushed, rather than building a second
-        // identical one — which now costs a listing and a thumbnail lookup as well.
+        // The same response both were pushed, rather than building a second identical
+        // one — which now costs a listing and a thumbnail lookup as well.
         return response;
     }
 
@@ -124,11 +130,33 @@ public class MessagingServiceImpl implements MessagingService {
     @Transactional
     public void markAsRead(UUID conversationUuid) {
         String me = AuthUtils.extractUserId();
-        requireParticipant(conversationUuid, me);
-        messageRepository.markAllRead(conversationUuid, me);
+        Conversation conversation = requireParticipant(conversationUuid, me);
+
+        if (messageRepository.markAllRead(conversationUuid, me) == 0) {
+            // Reopening a thread that was already read changes nothing, and it is the
+            // common case — a client that polls this endpoint on every screen would
+            // otherwise push two frames per visit for no reason.
+            return;
+        }
+
+        // Neither side can work this out on its own: the reader's other devices are
+        // still showing a badge for messages that have just been read, and the sender
+        // has no way to learn their messages were seen.
+        ConversationReadEvent event =
+                new ConversationReadEvent(conversationUuid, me, LocalDateTime.now());
+        messagingTemplate.convertAndSendToUser(me, "/queue/read", event);
+        messagingTemplate.convertAndSendToUser(
+                otherParticipant(conversation, me), "/queue/read", event);
     }
 
     // ---------- helpers ----------
+
+    /** The person in a thread who is not {@code me}. */
+    private String otherParticipant(Conversation conversation, String me) {
+        return conversation.getParticipantA().equals(me)
+                ? conversation.getParticipantB()
+                : conversation.getParticipantA();
+    }
 
     /**
      * Gates <em>sending</em> on the sender's subscription, and only when the sender
@@ -247,9 +275,7 @@ public class MessagingServiceImpl implements MessagingService {
     }
 
     private ConversationResponse toResponse(Conversation c, String me) {
-        String otherId = c.getParticipantA().equals(me)
-                ? c.getParticipantB() : c.getParticipantA();
-
+        String otherId = otherParticipant(c, me);
         UserProfile other = userProfileRepository.findById(otherId).orElse(null);
 
         // last message
